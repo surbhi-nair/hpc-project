@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # D2Q9 direction vectors
 DIRECTIONS = torch.tensor([
     [ 0,  0],  # 0: rest
@@ -15,7 +16,7 @@ DIRECTIONS = torch.tensor([
     [-1,  1],  # 6: northwest
     [-1, -1],  # 7: southwest
     [ 1, -1],  # 8: southeast
-], dtype=torch.int32)
+], dtype=torch.int32, device=DEVICE)
 
 '''
 Milestone 2: Streaming Operator
@@ -39,10 +40,10 @@ class LBMGrid2D:
         self.nx = nx
         self.ny = ny
         self.ndir = 9
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or DEVICE
 
         # Initialize distribution function f
-        self.f = torch.zeros((nx, ny, self.ndir), dtype=torch.float32, device=self.device)
+        self.f = torch.zeros((nx, ny, self.ndir), dtype=torch.float32, device=DEVICE)
         self.e = DIRECTIONS.to(self.device)
 
         self.initialize_distribution()
@@ -113,7 +114,7 @@ class LBMGrid2D:
 
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        u = self.compute_velocity().cpu().numpy()
+        u = self.compute_velocity().to("cpu").numpy()
         X, Y = np.meshgrid(np.arange(self.nx), np.arange(self.ny), indexing='ij')
 
         plt.figure(figsize=(6, 4))
@@ -138,7 +139,7 @@ class LBMGrid2D:
             out_dir = project_root / "plots/m2"
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        rho = self.compute_density().cpu().numpy()
+        rho = self.compute_density().to("cpu").numpy()
         plt.imshow(rho.T, origin="lower", cmap="viridis")
         plt.colorbar(label="Density")
         plt.xlabel("Lattice X Position (grid index)")

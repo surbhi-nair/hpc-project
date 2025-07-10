@@ -1,10 +1,10 @@
-# m3_tests_runner.py
-
 from pathlib import Path
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import json
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DIRECTIONS = torch.tensor([
     [ 0,  0], [ 1,  0], [ 0,  1], [-1,  0], [ 0, -1],
@@ -16,13 +16,13 @@ WEIGHTS = torch.tensor([
 ], dtype=torch.float32)
 
 class LBMTest:
-    def __init__(self, nx=15, ny=10, tau=0.6, test_case='test1'):
+    def __init__(self, nx=300, ny=300, tau=0.6, test_case='test1', device=DEVICE):
         self.nx = nx
         self.ny = ny
         self.ndir = 9
         self.tau = tau
         self.test_case = test_case
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
 
         self.e = DIRECTIONS.to(self.device)
         self.w = WEIGHTS.to(self.device)
@@ -51,7 +51,7 @@ class LBMTest:
     def compute_velocity(self):
         rho = self.compute_density().unsqueeze(-1)
         momentum = (self.f.unsqueeze(-1) * self.e).sum(dim=2)
-        u = torch.zeros_like(momentum)
+        u = torch.zeros_like(momentum, device=self.device)
         mask = rho.squeeze(-1) > 0
         u[mask] = momentum[mask] / rho[mask]
         return u
@@ -63,7 +63,7 @@ class LBMTest:
         self.f += -(1.0 / self.tau) * (self.f - feq)
 
     def stream(self):
-        f_new = torch.empty_like(self.f)
+        f_new = torch.empty_like(self.f, device=self.device)
         for i in range(self.ndir):
             dx, dy = self.e[i].int()
             f_new[..., i] = torch.roll(self.f[..., i], shifts=(dx.item(), dy.item()), dims=(0, 1))
@@ -85,14 +85,15 @@ class LBMTest:
         X, Y = np.meshgrid(np.arange(self.nx), np.arange(self.ny), indexing='ij')
         out_dir.mkdir(parents=True, exist_ok=True)
         plt.figure(figsize=(6, 4))
-        plt.quiver(X, Y, u[..., 0], u[..., 1], scale=0.005, scale_units='xy')
+        plt.quiver(X, Y, u[..., 0], u[..., 1], scale=1.0, scale_units='xy')
+        #plt.streamplot(X, Y, u[..., 0], u[..., 1], density=1.5, linewidth=1, color=np.sqrt(u[..., 0]**2 + u[..., 1]**2), cmap='plasma')
         plt.xlabel("Lattice X Position (grid index)")
         plt.ylabel("Lattice Y Position (grid index)")
         plt.title(f"Velocity Field at Step {step}")
         plt.savefig(out_dir / f"velocity_step_{step:04d}.png")
         plt.close()
 
-    def run(self, steps=50, save_every=5):
+    def run(self, steps=1000, save_every=1):
         base_dir = Path("plots") / f"m3_{self.test_case}"
         velocities = []
         for step in range(steps):

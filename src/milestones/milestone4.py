@@ -3,15 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import math
+import time
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", DEVICE)
 
 # -------------------- CONFIGURATION --------------------
 plot_dir = Path("plots/m4")
 plot_dir.mkdir(parents=True, exist_ok=True)
 
-NX, NY = 60, 40
-NSTEPS = 1000
+NX, NY = 10, 10
+NSTEPS = 100
 SAVE_EVERY = 100
-OMEGA_VALUES = [1.0, 1.2, 1.4, 1.6]  # Within (0,2)
+OMEGA_VALUES = [0.8, 1.0, 1.2, 1.4, 1.6]  # Within (0,2)
 u0 = 0.08  # initial amplitude (|u| < 0.1)
 rho0 = 1.0
 n = 1  # wave mode
@@ -20,12 +24,12 @@ PLOT_FLAG = False  # Set to True to enable plotting
 E = torch.tensor([
     [0,  0], [1,  0], [0,  1], [-1,  0], [0, -1],
     [1,  1], [-1,  1], [-1, -1], [1, -1]
-], dtype=torch.float32)
+], dtype=torch.float32, device=DEVICE)
 
 W = torch.tensor([
     4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9,
     1 / 36, 1 / 36, 1 / 36, 1 / 36
-], dtype=torch.float32)
+], dtype=torch.float32, device=DEVICE)
 
 
 def feq(rho, u):
@@ -46,7 +50,7 @@ def collide(f, omega):
 
 def stream(f):
     """Perform the streaming step."""
-    f_new = torch.empty_like(f)
+    f_new = torch.empty_like(f, device=DEVICE)
     for i in range(9):
         dx, dy = E[i].int()
         f_new[:, :, i] = torch.roll(f[:, :, i], shifts=(dx.item(), dy.item()), dims=(0, 1))
@@ -62,28 +66,32 @@ def compute_velocity(f, rho):
 
 def init_state(omega):
     """Initialize the simulation with sinusoidal velocity in x-direction."""
-    Y = torch.arange(NY).view(1, NY).expand(NX, NY)
+    Y = torch.arange(NY, device=DEVICE).view(1, NY).expand(NX, NY)
     k = 2 * math.pi * n / NY
-    u = torch.zeros((NX, NY, 2))
+    u = torch.zeros((NX, NY, 2), device=DEVICE)
     u[:, :, 0] = u0 * torch.sin(k * Y)
-    rho = torch.full((NX, NY), rho0)
+    rho = torch.full((NX, NY), rho0, device=DEVICE)
     f = feq(rho, u)
     return f, rho, u
 
-
 def save_snapshot(u, rho, step, tag):
-    """Save density and velocity plots."""
     (plot_dir / tag / "velocity").mkdir(parents=True, exist_ok=True)
     (plot_dir / tag / "density").mkdir(parents=True, exist_ok=True)
-    X, Y = torch.meshgrid(torch.arange(NX), torch.arange(NY), indexing='ij')
-    u_np = u.numpy()
-    rho_np = rho.numpy()
+
+    X, Y = torch.meshgrid(
+        torch.arange(NX, device=DEVICE),
+        torch.arange(NY, device=DEVICE),
+        indexing='ij'
+    )
+    X = X.cpu().numpy()
+    Y = Y.cpu().numpy()
+
+    u_np = u.detach().cpu().numpy()
+    rho_np = rho.detach().cpu().numpy()
 
     # Velocity field
     plt.figure()
-    # speed = np.linalg.norm(u, axis=-1)
-    plt.quiver(X, Y, u[..., 0], u[..., 1], scale=1.0)
-    # plt.colorbar(label="Velocity Magnitude")
+    plt.quiver(X, Y, u_np[..., 0], u_np[..., 1], scale=1.0)
     plt.title(f"Velocity Field at Step {step} (omega = {omega})")
     plt.xlabel("x")
     plt.ylabel("y")
@@ -100,14 +108,13 @@ def save_snapshot(u, rho, step, tag):
     plt.savefig(plot_dir / tag / "density" / f"density_{step:04d}.png")
     plt.close()
 
-
 def run_simulation(omega):
     """Run LBM simulation for a given omega and return amplitude decay list."""
     tag = f"omega_{omega:.2f}"
     f, _, _ = init_state(omega)
     k = 2 * math.pi * n / NY
     amp_decay = []
-
+    start = time.time()
     for step in range(NSTEPS + 1):
         rho = f.sum(dim=2)
         u = compute_velocity(f, rho)
@@ -120,6 +127,11 @@ def run_simulation(omega):
         f = collide(f, omega)
         f = stream(f)
 
+    end = time.time()
+    T = end - start
+    updates = NSTEPS * NX * NY
+    blups = updates / T / 1e9
+    print(f"Performance: {blups:.3f} billion lattice updates per second (BLUPS)")
     return amp_decay, tag
 
 
@@ -186,19 +198,24 @@ def find_best_omega(omega_vals, nu_numeric):
 
 if __name__ == "__main__":
     viscosity_measurements = []
-    for omega in OMEGA_VALUES:
-        print(f"Running simulation for omega = {omega:.2f}")
-        amp_decay, tag = run_simulation(omega)
-        plot_amplitude_decay(amp_decay, omega)
-        viscosity_measurements.append(extract_viscosity_numerical(amp_decay))
+    if(DEVICE.type == 'cuda'):
+        print("Using GPU for simulation")
+        for omega in OMEGA_VALUES:
+            print(f"Running simulation for omega = {omega:.2f}")
+            amp_decay, tag = run_simulation(omega)
+            plot_amplitude_decay(amp_decay, omega)
+            viscosity_measurements.append(extract_viscosity_numerical(amp_decay))
 
-    plt.title("Amplitude Decay")
-    plt.xlabel("Time step")
-    plt.ylabel("Normalized Amplitude")
-    plt.legend()
-    plt.savefig(plot_dir / "amplitude_decay_all.png")
-    plt.close()
+        plt.title("Amplitude Decay")
+        plt.xlabel("Time step")
+        plt.ylabel("Normalized Amplitude")
+        plt.legend()
+        plt.savefig(plot_dir / "amplitude_decay_all.png")
+        plt.close()
 
-    plot_viscosity_vs_omega(OMEGA_VALUES, viscosity_measurements)
-    print_viscosity_table(OMEGA_VALUES, viscosity_measurements)
-    best_omega, best_nu_num, best_nu_ana, best_error = find_best_omega(OMEGA_VALUES, viscosity_measurements)
+        plot_viscosity_vs_omega(OMEGA_VALUES, viscosity_measurements)
+        print_viscosity_table(OMEGA_VALUES, viscosity_measurements)
+        best_omega, best_nu_num, best_nu_ana, best_error = find_best_omega(OMEGA_VALUES, viscosity_measurements)
+    else:
+        print("Using CPU for simulation")
+        raise RuntimeError("This simulation is designed to run on a GPU. Please use a CUDA-enabled device.")
