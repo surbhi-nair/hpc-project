@@ -5,21 +5,25 @@ import os
 from pathlib import Path
 import time
 
+# Set device
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", DEVICE)
+
 # Constants for D2Q9
 E = torch.tensor([
     [0, 0], [1, 0], [0, 1], [-1, 0], [0, -1],
     [1, 1], [-1, 1], [-1, -1], [1, -1]
-], dtype=torch.float32)
+], dtype=torch.float32, device=DEVICE)
 
 W = torch.tensor([
     4/9, 1/9, 1/9, 1/9, 1/9,
     1/36, 1/36, 1/36, 1/36
-], dtype=torch.float32)
+], dtype=torch.float32, device=DEVICE)
 
-OPP = torch.tensor([0, 3, 4, 1, 2, 7, 8, 5, 6])
+OPP = torch.tensor([0, 3, 4, 1, 2, 7, 8, 5, 6], device=DEVICE)
 
 # Simulation parameters
-NX, NY = 3000, 3000
+NX, NY = 3000, 3000 # Grid size
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
@@ -40,8 +44,8 @@ def equilibrium(rho, u):
 
 def initialize():
     """Initialize rho=1, u=0 and compute initial f from equilibrium."""
-    rho = torch.ones((NX, NY), dtype=torch.float32)
-    u = torch.zeros((NX, NY, 2), dtype=torch.float32)
+    rho = torch.ones((NX, NY), dtype=torch.float32, device=DEVICE)
+    u = torch.zeros((NX, NY, 2), dtype=torch.float32, device=DEVICE)
     f = equilibrium(rho, u)
     return rho, u, f
 
@@ -56,7 +60,7 @@ def stream(f):
     """Perform the streaming step."""
     f_streamed = torch.empty_like(f)
     for i in range(9):
-        dx, dy = int(E[i, 0]), int(E[i, 1])
+        dx, dy = int(E[i, 0].item()), int(E[i, 1].item())
         f_streamed[..., i] = torch.roll(f[..., i], shifts=(dx, dy), dims=(0, 1))
     return f_streamed
 
@@ -79,7 +83,7 @@ def apply_boundaries(f, pre_f):
         opp = OPP[i].item()
         f[-1, :, i] = pre_f[-1, :, opp]
     # Moving lid (y=NY-1): Zou-He moving wall for directions 4,7,8
-    u_wall = torch.tensor([LID_VELOCITY, 0], dtype=torch.float32)
+    u_wall = torch.tensor([LID_VELOCITY, 0], dtype=torch.float32, device=DEVICE)
     rho_top = rho[:, -1]
     for i in [4, 7, 8]:
         ci = E[i]
@@ -99,7 +103,7 @@ def collide(f):
 
 def save_velocity_plot(u, step):
     """Plot the velocity vector field using quiver."""
-    u_np = u.numpy()
+    u_np = u.detach().cpu().numpy()
     X, Y = np.meshgrid(np.arange(NX), np.arange(NY), indexing='ij')
     plt.figure(figsize=(6, 6))
     plt.quiver(X, Y, u_np[..., 0], u_np[..., 1], scale=3, scale_units='xy')
@@ -111,22 +115,20 @@ def save_velocity_plot(u, step):
     
 def save_streamplot(u, step):
     """Save a streamline plot of velocity vectors at a given step."""
-    u_np = u.numpy()  # Shape: (NX, NY, 2)
-
+    u_np = u.detach().cpu().numpy()  # Shape: (NX, NY, 2)
     Y, X = np.meshgrid(np.arange(NY), np.arange(NX), indexing='ij')  # Shape: (NY, NX)
     U = u_np[..., 0]  # Shape: (NX, NY)
     V = u_np[..., 1]  # Shape: (NX, NY)
-
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.streamplot(X, Y, U.T, V.T, density=1.2, linewidth=0.8, arrowsize=1)
     ax.set_title(f"Streamplot at Step {step}")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-
     streamplot_dir = PLOT_DIR / "streamplots"
     streamplot_dir.mkdir(exist_ok=True, parents=True)
     plt.savefig(streamplot_dir / f'sliding_lid_velocity_field_{step:04d}.png')
     plt.close(fig)
+
 def run_simulation():
     """Main simulation loop."""
     rho, u, f = initialize()
@@ -148,15 +150,20 @@ def run_simulation():
             # Store the x-component of velocity along the vertical centerline (y-direction)
             # Shape: (NY,)
             vx_dict[step] = u[center_x, :, 0].detach().cpu().numpy()
-
     end = time.time()
     T = end - start
     updates = NSTEPS * NX * NY
     blups = updates / T / 1e9
-    print(f"Performance: {blups:.3f} billion lattice updates per second (BLUPS)")
+    print(f"=========== Performance: {blups:.3f} billion lattice updates per second (BLUPS) ===========")
 
     # Optionally: save vx_dict for later analysis/visualization
     np.save(PLOT_DIR / "vx_centerline_dict.npy", vx_dict)
 
 if __name__ == "__main__":
-    run_simulation()
+    if(DEVICE.type == 'cuda'):
+        print("Using GPU for simulation")
+        run_simulation()
+    else:
+        print("Using CPU for simulation, this may be slow")
+        raise RuntimeError("This simulation is designed to run on a GPU. Please use a CUDA-enabled device.")
+    print("Simulation completed successfully.")
