@@ -22,7 +22,7 @@ W = torch.tensor([
 OPP = torch.tensor([0, 3, 4, 1, 2, 7, 8, 5, 6], device=DEVICE)
 
 # Simulation parameters
-NX, NY = 100, 100
+NX, NY = 3000, 3000
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
@@ -143,6 +143,10 @@ def run_simulation():
     vx_dict = {}
     center_x = NX // 2
     start = time.time()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    start_event.record()
+
     with torch.no_grad():
         for step in range(NSTEPS):
             # pre_f = f.detach().clone()            # Save pre-streaming distributions without tracking gradients
@@ -157,6 +161,14 @@ def run_simulation():
                 # Store the x-component of velocity along the vertical centerline (y-direction)
                 # Shape: (NY,)
                 vx_dict[step] = u[center_x, :, 0].detach().cpu().numpy()
+
+    end_event.record()
+    torch.cuda.synchronize()  # Wait for GPU to finish
+    gpu_time_sec = start_event.elapsed_time(end_event) / 1000  # ms -> s
+    total_updates = NSTEPS * NX * NY
+    blups = total_updates / gpu_time_sec / 1e9
+    
+    print(f"========= Performance: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
 
     end = time.time()
     T = end - start

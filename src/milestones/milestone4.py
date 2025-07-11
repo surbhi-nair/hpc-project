@@ -15,7 +15,7 @@ plot_dir.mkdir(parents=True, exist_ok=True)
 NX, NY = 3000, 3000 # Grid size
 NSTEPS = 10000
 SAVE_EVERY = 100
-OMEGA_VALUES = [0.8, 1.0, 1.2, 1.4, 1.6]  # Within (0,2)
+OMEGA_VALUES = [0.9, 1.0, 1.1, 1.2]
 u0 = 0.08  # initial amplitude (|u| < 0.1)
 rho0 = 1.0
 n = 1  # wave mode
@@ -115,6 +115,9 @@ def run_simulation(omega):
     k = 2 * math.pi * n / NY
     amp_decay = []
     start = time.time()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    start_event.record()
     for step in range(NSTEPS + 1):
         rho = f.sum(dim=2)
         u = compute_velocity(f, rho)
@@ -127,11 +130,18 @@ def run_simulation(omega):
         f = collide(f, omega)
         f = stream(f)
 
+    end_event.record()
+    torch.cuda.synchronize()  # Wait for GPU to finish
+    gpu_time_sec = start_event.elapsed_time(end_event) / 1000  # ms -> s
+    total_updates = NSTEPS * NX * NY
+    blups = total_updates / gpu_time_sec / 1e9
+    
+    print(f"========= Omega={omega:.2f}: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
     end = time.time()
     T = end - start
     updates = NSTEPS * NX * NY
     blups = updates / T / 1e9
-    print(f"Performance: {blups:.3f} billion lattice updates per second (BLUPS)")
+    print(f"Normal time Performance: {blups:.3f}(BLUPS)")
     return amp_decay, tag
 
 
