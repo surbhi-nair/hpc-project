@@ -12,8 +12,8 @@ print("Using device:", DEVICE)
 plot_dir = Path("plots/m4")
 plot_dir.mkdir(parents=True, exist_ok=True)
 
-NX, NY = 10, 10
-NSTEPS = 100
+NX, NY = 3000, 3000
+NSTEPS = 10000
 SAVE_EVERY = 100
 OMEGA_VALUES = [0.8, 1.0, 1.2, 1.4, 1.6]  # Within (0,2)
 u0 = 0.08  # initial amplitude (|u| < 0.1)

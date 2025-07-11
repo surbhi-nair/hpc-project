@@ -19,13 +19,14 @@ W = torch.tensor([
 OPP = torch.tensor([0, 3, 4, 1, 2, 7, 8, 5, 6])
 
 # Simulation parameters
-NX, NY = 300, 300
+NX, NY = 3000, 3000
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
 LID_VELOCITY = 0.1
 PLOT_DIR = Path("plots/m5_lid_driven_300x300")
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
+PLOT_FLAG = False # Set to True to enable plotting
 
 # Save frequency for plots and velocity snapshots
 SAVE_EVERY = 100
@@ -140,7 +141,7 @@ def run_simulation():
         f = collide(f)
 
         # Save plots and velocity slices at specified intervals
-        if step % SAVE_EVERY == 0 or step == NSTEPS - 1:
+        if (step % SAVE_EVERY == 0 or step == NSTEPS - 1) and PLOT_FLAG:
             _, u = compute_macroscopic(f)
             #save_velocity_plot(u, step)
             save_streamplot(u, step)
