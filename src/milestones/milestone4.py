@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import math
-import time
 
+torch.set_float32_matmul_precision('high')  # Add after torch import
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
 
@@ -39,7 +39,7 @@ def feq(rho, u):
     feq = rho.unsqueeze(-1) * W * (1 + 3 * eu + 4.5 * eu ** 2 - 1.5 * u2)
     return feq
 
-
+@torch.compile(mode="max-autotune")  # <-- Add this line
 def collide(f, omega):
     """Perform the collision step."""
     rho = f.sum(dim=2)
@@ -47,14 +47,27 @@ def collide(f, omega):
     feq_ = feq(rho, u)
     return f - omega * (f - feq_)
 
+# @torch.compile(mode="max-autotune")  # <-- Add this line
+# def stream(f):
+#     """Perform the streaming step."""
+#     f_new = torch.empty_like(f, device=DEVICE)
+#     for i in range(9):
+#         dx, dy = E[i].int()
+#         f_new[:, :, i] = torch.roll(f[:, :, i], shifts=(dx.item(), dy.item()), dims=(0, 1))
+#     return f_new
 
+@torch.compile(mode="max-autotune")
 def stream(f):
-    """Perform the streaming step."""
-    f_new = torch.empty_like(f, device=DEVICE)
-    for i in range(9):
-        dx, dy = E[i].int()
-        f_new[:, :, i] = torch.roll(f[:, :, i], shifts=(dx.item(), dy.item()), dims=(0, 1))
-    return f_new
+    """Fully vectorized streaming step for D2Q9 (fastest on GPU)."""
+    # f: [NX, NY, 9] -> [9, NX, NY]
+    f = f.permute(2, 0, 1)
+    shifts = E.int().tolist()  # [(dx, dy), ...] for 9 directions
+    f_streamed = torch.stack([
+        torch.roll(f[i], shifts=tuple(shifts[i]), dims=(0, 1))
+        for i in range(9)
+    ], dim=0)
+    # Back to [NX, NY, 9]
+    return f_streamed.permute(1, 2, 0)
 
 
 def compute_velocity(f, rho):
@@ -108,13 +121,14 @@ def save_snapshot(u, rho, step, tag):
     plt.savefig(plot_dir / tag / "density" / f"density_{step:04d}.png")
     plt.close()
 
+@torch.compile(mode="max-autotune")  # <-- Add this line
 def run_simulation(omega):
     """Run LBM simulation for a given omega and return amplitude decay list."""
     tag = f"omega_{omega:.2f}"
     f, _, _ = init_state(omega)
     k = 2 * math.pi * n / NY
     amp_decay = []
-    start = time.time()
+
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     start_event.record()
@@ -135,13 +149,8 @@ def run_simulation(omega):
     gpu_time_sec = start_event.elapsed_time(end_event) / 1000  # ms -> s
     total_updates = NSTEPS * NX * NY
     blups = total_updates / gpu_time_sec / 1e9
-    
     print(f"========= Omega={omega:.2f}: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
-    end = time.time()
-    T = end - start
-    updates = NSTEPS * NX * NY
-    blups = updates / T / 1e9
-    print(f"Normal time Performance: {blups:.3f}(BLUPS)")
+
     return amp_decay, tag
 
 
