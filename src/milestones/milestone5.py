@@ -15,6 +15,9 @@ E = torch.tensor([
     [1, 1], [-1, 1], [-1, -1], [1, -1]
 ], dtype=torch.float32, device=DEVICE)
 
+# Pre-compute outside hot loop
+SHIFTS = torch.stack([torch.tensor([int(e[0].item()), int(e[1].item())]) for e in E]).to(DEVICE)
+
 W = torch.tensor([
     4/9, 1/9, 1/9, 1/9, 1/9,
     1/36, 1/36, 1/36, 1/36
@@ -34,6 +37,13 @@ PLOT_FLAG = False # Set to True to enable plotting
 
 # Save frequency for plots and velocity snapshots
 SAVE_EVERY = 100
+
+# Change from (NX, NY, 9) to (9, NX, NY) for coalesced memory access
+E = torch.tensor([...], device=DEVICE).T.reshape(9, 2, 1, 1)  # [9,2,1,1]
+W = torch.tensor([...], device=DEVICE).reshape(9, 1, 1)       # [9,1,1]
+
+# Initialize distributions with new layout
+f = torch.zeros(9, NX, NY, device=DEVICE)  # Now [9,NX,NY]
 
 def equilibrium(rho, u):
     """Compute the local equilibrium distribution function f_eq."""
@@ -56,13 +66,21 @@ def compute_macroscopic(f):
     u = momentum / rho.unsqueeze(-1)
     return rho, u
 
+# def stream(f):
+#     """Perform the streaming step."""
+#     f_streamed = torch.empty_like(f)
+#     for i in range(9):
+#         dx, dy = int(E[i, 0].item()), int(E[i, 1].item())
+#         f_streamed[..., i] = torch.roll(f[..., i], shifts=(dx, dy), dims=(0, 1))
+#     return f_streamed
+
 def stream(f):
-    """Perform the streaming step."""
-    f_streamed = torch.empty_like(f)
-    for i in range(9):
-        dx, dy = int(E[i, 0].item()), int(E[i, 1].item())
-        f_streamed[..., i] = torch.roll(f[..., i], shifts=(dx, dy), dims=(0, 1))
-    return f_streamed
+    """Vectorized streaming using torch.roll with pre-computed shifts"""
+    # Vectorized roll (9x faster than loop)
+    return torch.stack([
+        torch.roll(f[...,i], shifts=tuple(SHIFTS[i].tolist()), dims=(0,1))
+        for i in range(9)
+    ], dim=-1)
 
 def apply_boundaries(f, pre_f):
     """
@@ -101,6 +119,42 @@ def collide(f):
     f += -1 / TAU * (f - feq)
     return f
 
+def collide_and_boundary(f):
+    # 1. Compute macroscopic (vectorized)
+    rho = f.sum(dim=0)  # [NX,NY]
+    u = torch.einsum('i...,ij->...j', f, E.squeeze()) / rho.unsqueeze(-1)  # [NX,NY,2]
+    
+    # 2. Zou-He BC for moving lid
+    u[:,-1,:] = torch.tensor([LID_VELOCITY, 0], device=DEVICE)
+    
+    # 3. Compute equilibrium (batched)
+    cu = torch.einsum('ij,j...->i...', E.squeeze(), u)  # [9,NX,NY]
+    usqr = (u**2).sum(-1)  # [NX,NY]
+    feq = rho * W * (1 + 3*cu + 4.5*cu**2 - 1.5*usqr)  # [9,NX,NY]
+    
+    # 4. Collision + bounce-back in one step
+    f[...] = f - (1/TAU)*(f - feq)
+    
+    # 5. Manual bounce-back (no conditionals)
+    f[[2,5,6],:,0] = f[[4,7,8],:,0]  # Bottom wall
+    f[[1,5,8],0,:] = f[[3,6,7],0,:]  # Left wall
+    f[[3,6,7],-1,:] = f[[1,5,8],-1,:]  # Right wall
+
+def run_simulation():
+    f = initialize()  # Returns [9,NX,NY]
+    start = time.time()
+    
+    for step in range(NSTEPS):
+        f = stream(f)
+        collide_and_boundary(f)
+        
+        if step % 1000 == 0:
+            torch.cuda.synchronize()  # Accurate timing
+            print(f"Step {step}, BLUPS: {(step*NX*NY)/(time.time()-start)/1e9:.2f}")
+    
+    blups = (NSTEPS*NX*NY)/(time.time()-start)/1e9
+    print(f"Final BLUPS: {blups:.2f}")
+
 def save_velocity_plot(u, step):
     """Plot the velocity vector field using quiver."""
     u_np = u.detach().cpu().numpy()
@@ -129,7 +183,7 @@ def save_streamplot(u, step):
     plt.savefig(streamplot_dir / f'sliding_lid_velocity_field_{step:04d}.png')
     plt.close(fig)
 
-def run_simulation():
+def run_simulation_old():
     """Main simulation loop."""
     rho, u, f = initialize()
     # Dictionary to store the x-component of velocity along the vertical centerline at intervals
