@@ -15,7 +15,7 @@ plot_dir.mkdir(parents=True, exist_ok=True)
 NX, NY = 3000, 3000 # Grid size
 NSTEPS = 10000
 SAVE_EVERY = 100
-OMEGA_VALUES = [0.9, 1.0, 1.1, 1.2]
+OMEGA_VALUES = [1.0]
 u0 = 0.08  # initial amplitude (|u| < 0.1)
 rho0 = 1.0
 n = 1  # wave mode
