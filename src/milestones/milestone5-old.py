@@ -59,6 +59,7 @@ def compute_macroscopic(f):
     u = momentum / rho.unsqueeze(-1)
     return rho, u
 
+@torch.compile
 def stream_and_apply_boundaries(f):
     """Perform streaming and apply boundary conditions fused into one function."""
     f_streamed = torch.empty_like(f)
@@ -97,6 +98,7 @@ def stream_and_apply_boundaries(f):
 
     return f_streamed
 
+@torch.compile
 def collide(f):
     """Collision step using BGK approximation."""
     rho, u = compute_macroscopic(f)
@@ -118,7 +120,7 @@ def save_velocity_plot(u, step):
     
 def save_streamplot(u, step):
     """Save a streamline plot of velocity vectors at a given step."""
-    u_np = u.cpu().numpy()  # Shape: (NX, NY, 2)
+    u_np = u.detach().cpu().numpy()  # Shape: (NX, NY, 2)
 
     Y, X = np.meshgrid(np.arange(NY), np.arange(NX), indexing='ij')  # Shape: (NY, NX)
     U = u_np[..., 0]  # Shape: (NX, NY)
@@ -141,19 +143,20 @@ def run_simulation():
     vx_dict = {}
     center_x = NX // 2
     start = time.time()
-    for step in range(NSTEPS):
-        pre_f = f.detach().clone()            # Save pre-streaming distributions without tracking gradients
-        f = stream_and_apply_boundaries(f)   # Streaming and BC fused
-        f = collide(f)
+    with torch.no_grad():
+        for step in range(NSTEPS):
+            # pre_f = f.detach().clone()            # Save pre-streaming distributions without tracking gradients
+            f = stream_and_apply_boundaries(f)   # Streaming and BC fused
+            f = collide(f)
 
-        # Save plots and velocity slices at specified intervals
-        if (step % SAVE_EVERY == 0 or step == NSTEPS - 1) and PLOT_FLAG:
-            _, u = compute_macroscopic(f)
-            #save_velocity_plot(u, step)
-            save_streamplot(u, step)
-            # Store the x-component of velocity along the vertical centerline (y-direction)
-            # Shape: (NY,)
-            vx_dict[step] = u[center_x, :, 0].detach().cpu().numpy()
+            # Save plots and velocity slices at specified intervals
+            if (step % SAVE_EVERY == 0 or step == NSTEPS - 1) and PLOT_FLAG:
+                _, u = compute_macroscopic(f)
+                #save_velocity_plot(u, step)
+                save_streamplot(u, step)
+                # Store the x-component of velocity along the vertical centerline (y-direction)
+                # Shape: (NY,)
+                vx_dict[step] = u[center_x, :, 0].detach().cpu().numpy()
 
     end = time.time()
     T = end - start
