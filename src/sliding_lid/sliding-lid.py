@@ -16,6 +16,7 @@ if PLOT_FLAG:
     PLOT_DIR = "plots/sliding_lid"
     os.makedirs(PLOT_DIR, exist_ok=True)
 
+@torch.compile(mode="max-autotune")
 def sliding_lid(
         proba_density,
         lid_velocity,
@@ -65,35 +66,36 @@ def sliding_lid(
 
     start_time = time.time()
 
+    with torch.no_grad():
     # For each iteration step
-    for step in trange(steps, desc="Sliding lid"):
-        # Calculate density
-        density = lbm.calculate_density(proba_density)
-        # Calculate velocity
-        velocity = lbm.calculate_velocity(proba_density)
-        # Perform collision/relaxation
-        lbm.collision_relaxation(proba_density, velocity, density, omega=omega)
-        # Keep the probability density function pre-streaming
-        pre_stream_proba_density = proba_density.clone()
-        # Streaming
-        lbm.streaming(proba_density)
-        # Apply boundary conditions on the bottom rigid wall
-        lbm.rigid_wall(proba_density, pre_stream_proba_density, "lower")
-        # Apply boundary condition on the top moving wall
-        lbm.moving_wall(proba_density, pre_stream_proba_density,
-                        lid_velocity, density, "upper")
-        # Apply boundary conditions on the left rigid wall
-        lbm.rigid_wall(proba_density, pre_stream_proba_density, "left")
-        # Apply boundary conditions on the right rigid wall
-        lbm.rigid_wall(proba_density, pre_stream_proba_density, "right")
+        for step in trange(steps, desc="Sliding lid"):
+            # Calculate density
+            density = lbm.calculate_density(proba_density)
+            # Calculate velocity
+            velocity = lbm.calculate_velocity(proba_density)
+            # Perform collision/relaxation
+            lbm.collision_relaxation(proba_density, velocity, density, omega=omega)
+            # Keep the probability density function pre-streaming
+            pre_stream_proba_density = proba_density.clone()
+            # Streaming
+            lbm.streaming(proba_density)
+            # Apply boundary conditions on the bottom rigid wall
+            lbm.rigid_wall(proba_density, pre_stream_proba_density, "lower")
+            # Apply boundary condition on the top moving wall
+            lbm.moving_wall(proba_density, pre_stream_proba_density,
+                            lid_velocity, density, "upper")
+            # Apply boundary conditions on the left rigid wall
+            lbm.rigid_wall(proba_density, pre_stream_proba_density, "left")
+            # Apply boundary conditions on the right rigid wall
+            lbm.rigid_wall(proba_density, pre_stream_proba_density, "right")
 
-        if step % keep_every_steps == 0:
-            # Keep the velocity in a slice on the axis that is perpendicular to the moving
-            # boundary, the shape of vx_dict[<step>] is (lattice_size,)
-            vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
+            if step % keep_every_steps == 0:
+                # Keep the velocity in a slice on the axis that is perpendicular to the moving
+                # boundary, the shape of vx_dict[<step>] is (lattice_size,)
+                vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
 
-            if gif and PLOT_FLAG:
-                save_streamplot(velocity, step, ax)
+                if gif and PLOT_FLAG:
+                    save_streamplot(velocity, step, ax)
 
     total_time = time.time() - start_time
     total_lattice_updates = steps * x_shape * y_shape
