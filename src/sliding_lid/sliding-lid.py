@@ -180,6 +180,7 @@ if __name__ == "__main__":
     reynolds = dim_0 * args.velocity / viscosity
 
     print("Running Sliding Lid simulation with the following setup:"
+          f"\n\tDEVICE: \t{DEVICE}"
           f"\n\tGrid size: \t\t{dim_0} x {dim_1}"
           f"\n\tCollision Frequency: \t{args.omega}"
           f"\n\tViscosity: \t\t{viscosity:.4f}"
