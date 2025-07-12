@@ -352,7 +352,7 @@ def moving_wall(
             # Calculate term due to velocity based on the channels going out
             temp_term = \
                 (-2 * weights[temp_out] * avg_density / c_s_squared) * \
-                torch.dot(velocity_channels[temp_out], wall_velocity)
+                torch.dot(velocity_channels[temp_out].to(wall_velocity.dtype), wall_velocity)
             # Index of y's that are on the upper boundary is equal to the
             # size of the lattice - 1, for simplicity use "-1" to access
             proba_density[temp_in, :, -1] = \
