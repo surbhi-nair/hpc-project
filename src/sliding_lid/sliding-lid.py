@@ -65,7 +65,7 @@ def sliding_lid(
                  record_shapes=True,
                  profile_memory=True,
                  with_stack=True) as prof:
-        for step in range(steps, desc="Sliding lid"):
+        for step in range(steps):
             pre_stream_probab_density_f = probab_density_f.clone()
 
             with torch.no_grad():
