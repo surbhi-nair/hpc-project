@@ -44,14 +44,17 @@ def init_distribution(
 
     return torch.tensor(probab_density_f, dtype=torch.float32, device=DEVICE)
 
-def compute_density(probab_density_f):
+def compute_density(probab_density_f, out=None):
     """
     Compute the density at each given lattice point
     """
     # Sum over the channels to get the density at each point
+    if out is not None:
+        torch.sum(probab_density_f, dim=0, out=out)
+        return out
     return torch.sum(probab_density_f, dim=0)
 
-def compute_velocity(probab_density_f):
+def compute_velocity(probab_density_f, out=None):
     """
     Compute the velocity field at each given point.
     Args:
@@ -65,7 +68,11 @@ def compute_velocity(probab_density_f):
         CHANNEL_VELOCITIES.T.to(probab_density_f.dtype).to(probab_density_f.device),
         probab_density_f.reshape(9, -1),
     ).reshape(2, *density.shape)
-    return velocity / density
+    result = velocity / density
+    if out is not None:
+        out.copy_(result)
+        return out
+    return result
 
 def streaming(probab_density_f):
     """
