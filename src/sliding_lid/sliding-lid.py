@@ -53,7 +53,9 @@ def sliding_lid(
     if PLOT_FLAG:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 10))
 
-    start_time = time.time()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    start_event.record()
 
     with torch.no_grad():
     # For each iteration step
@@ -86,10 +88,18 @@ def sliding_lid(
                 if PLOT_FLAG:
                     save_streamplot(velocity, step, ax)
 
-    total_time = time.time() - start_time
-    total_lattice_updates = steps * x_shape * y_shape
-    blups = total_lattice_updates / total_time / 1e9
-    print(f"\nBLUPS Performance: {blups:.3f} Billion Lattice Updates Per Second")
+    # total_time = time.time() - start_time
+    # total_lattice_updates = steps * x_shape * y_shape
+    # blups = total_lattice_updates / total_time / 1e9
+    # print(f"\nBLUPS Performance: {blups:.3f} Billion Lattice Updates Per Second")
+
+    end_event.record()
+    torch.cuda.synchronize()  # Wait for GPU to finish
+    gpu_time_sec = start_event.elapsed_time(end_event) / 1000  # ms -> s
+    total_updates = steps * x_shape * y_shape
+    blups = total_updates / gpu_time_sec / 1e9
+    
+    print(f"========= Performance: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
 
     if PLOT_FLAG:
         # Plotting
@@ -183,7 +193,6 @@ if __name__ == "__main__":
     # Run simulation
     sliding_lid(p, w,
                 omega=args.omega,
-                steps=args.steps,
-                PLOT_FLAG=args.PLOT_FLAG)
+                steps=args.steps)
 
     print("\nSimulation completed.")
