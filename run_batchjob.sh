@@ -29,7 +29,7 @@ echo "Running from: $(pwd)"
 cd ~/hpc-project
 
 # # Run script (paths are now relative to repo root)
-python src/milestones/milestone5-old.py
+python src/milestones/milestone5.py
 
 # # Run with unbuffered output
 # PYTHONUNBUFFERED=1 python src/pythontest.py
