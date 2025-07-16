@@ -23,9 +23,9 @@ W = torch.tensor([
 OPP = torch.tensor([0, 3, 4, 1, 2, 7, 8, 5, 6], device=DEVICE)
 
 # Simulation parameters
-NX, NY = 3000, 3000
+NX, NY = 10000, 10000
 NSTEPS = 10000
-OMEGA = 1.0
+OMEGA = 1.3
 TAU = 1 / OMEGA
 LID_VELOCITY = 0.1
 

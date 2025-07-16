@@ -58,7 +58,7 @@ def equilibrium(rho, u):
     """Vectorized equilibrium calculation"""
     # u: [NX,NY,2] -> [1,NX,NY,2]
     # E_opt: [9,2,1,1]
-    cu = torch.einsum('dij,xyj->dxy', E_opt.squeeze(), u)  # [9,NX,NY]
+    cu = torch.einsum('dc,xyc->dxy', E, u)  # [9,NX,NY]
     usqr = (u**2).sum(-1)  # [NX,NY]
     return rho * W_opt * (1 + 3*cu + 4.5*cu**2 - 1.5*usqr)  # [9,NX,NY]
 
@@ -73,7 +73,7 @@ def collide_and_boundary(f):
     """Fused collision + boundary conditions"""
     # 1. Compute macroscopic
     rho = f.sum(dim=0)  # [NX,NY]
-    u = torch.einsum('dij,dxy->xyj', E_opt.squeeze(), f) / rho.unsqueeze(-1)
+    u = torch.einsum('dc,dxy->xyc', E, f) / rho.unsqueeze(-1)
     
     # 2. Apply boundary conditions
     u[:,-1,0] = LID_VELOCITY  # Moving lid
