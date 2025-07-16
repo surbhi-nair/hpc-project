@@ -19,7 +19,7 @@ if PLOT_FLAG:
     PLOT_DIR = Path("plots/sliding_lid/")
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
-# @torch.compile(mode="reduce-overhead")
+@torch.compile(mode="reduce-overhead")
 def sliding_lid(
         probab_density_f,
         lid_velocity,
@@ -44,8 +44,8 @@ def sliding_lid(
         None.
     """
     _, x_shape, y_shape = probab_density_f.shape
-    rho = torch.ones((x_shape, y_shape), dtype=torch.float32, device=DEVICE)
-    velocity = torch.zeros((2, x_shape, y_shape), dtype=torch.float32, device=DEVICE)
+    rho = torch.empty((x_shape, y_shape), dtype=torch.float32, device=DEVICE)
+    velocity = torch.empty((2, x_shape, y_shape), dtype=torch.float32, device=DEVICE)
     probab_density_f = lbm.compute_equilibrium(rho, velocity)
 
     # Initialize dictionary to hold x-velocity values at different timesteps
@@ -62,46 +62,48 @@ def sliding_lid(
     end_event = torch.cuda.Event(enable_timing=True)
     start_event.record()
 
-    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-                 record_shapes=True,
-                 profile_memory=True,
-                 with_stack=True) as prof:
-        for step in range(steps):
-            pre_stream_probab_density_f = probab_density_f.clone()
+    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+    #              record_shapes=True,
+    #              profile_memory=True,
+    #              with_stack=True) as prof:
+    for step in range(steps):
+        pre_stream_probab_density_f = torch.empty_like(probab_density_f)
+        pre_stream_probab_density_f.copy_(probab_density_f)
 
-            with torch.no_grad():
-                # Calculate density
-                rho = lbm.compute_density(probab_density_f)
-                # Calculate velocity
-                velocity = lbm.compute_velocity(probab_density_f)
+        with torch.no_grad():
+            # Calculate density
+            lbm.compute_density(probab_density_f, out=rho)
+            # Calculate velocity
+            lbm.compute_velocity(probab_density_f, out=velocity)
 
-            # Use checkpointing for collision_relaxation for memory efficiency
-            def collision_fn(prob_density, vel, dens, omega_val):
-                lbm.collision_relaxation(prob_density, vel, dens, omega=omega_val)
-                return prob_density
+        # Use checkpointing for collision_relaxation for memory efficiency
+        # def collision_fn(prob_density, vel, dens, omega_val):
+        #     lbm.collision_relaxation(prob_density, vel, dens, omega=omega_val)
+        #     return prob_density
 
-            probab_density_f = checkpoint(collision_fn, probab_density_f, velocity, rho, omega)
+        # probab_density_f = checkpoint(collision_fn, probab_density_f, velocity, rho, omega)
+        lbm.collision_relaxation(probab_density_f, velocity, rho, omega=omega)
 
-            # Streaming
-            lbm.streaming(probab_density_f)
-            # Apply boundary conditions on the bottom rigid wall
-            lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "lower")
-            # Apply boundary condition on the top moving wall
-            lbm.moving_wall(probab_density_f, pre_stream_probab_density_f,
-                            lid_velocity, rho, "upper")
-            # Apply boundary conditions on the left rigid wall
-            lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "left")
-            # Apply boundary conditions on the right rigid wall
-            lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "right")
+        # Streaming
+        lbm.streaming(probab_density_f)
+        # Apply boundary conditions on the bottom rigid wall
+        lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "lower")
+        # Apply boundary condition on the top moving wall
+        lbm.moving_wall(probab_density_f, pre_stream_probab_density_f,
+                        lid_velocity, rho, "upper")
+        # Apply boundary conditions on the left rigid wall
+        lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "left")
+        # Apply boundary conditions on the right rigid wall
+        lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "right")
 
-            if step % keep_every_steps == 0 and PLOT_FLAG:
-                # Keep the velocity in a slice on the axis that is perpendicular to the moving
-                # boundary, the shape of vx_dict[<step>] is (lattice_size,)
-                vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
-                save_streamplot(velocity, step, ax)
+        if step % keep_every_steps == 0 and PLOT_FLAG:
+            # Keep the velocity in a slice on the axis that is perpendicular to the moving
+            # boundary, the shape of vx_dict[<step>] is (lattice_size,)
+            vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
+            save_streamplot(velocity, step, ax)
 
-    print("\n==== Torch Profiler Summary ====")
-    print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
+    # print("\n==== Torch Profiler Summary ====")
+    # print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
 
     end_event.record()
     torch.cuda.synchronize()  # Wait for GPU to finish

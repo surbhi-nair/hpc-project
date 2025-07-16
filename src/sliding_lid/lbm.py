@@ -49,7 +49,7 @@ def compute_density(probab_density_f):
     Compute the density at each given lattice point
     """
     # Sum over the channels to get the density at each point
-    return torch.sum(probab_density_f, dim=0).detach().clone()
+    return torch.sum(probab_density_f, dim=0)
 
 def compute_velocity(probab_density_f):
     """
@@ -65,7 +65,7 @@ def compute_velocity(probab_density_f):
         CHANNEL_VELOCITIES.T.to(probab_density_f.dtype).to(probab_density_f.device),
         probab_density_f.reshape(9, -1),
     ).reshape(2, *density.shape)
-    return (velocity / density).detach().clone()
+    return velocity / density
 
 def streaming(probab_density_f):
     """
@@ -111,7 +111,7 @@ def compute_equilibrium(rho, u):
     result = WEIGHTS[:, None, None] * (
         rho * (1 + 3 * temp_v + 4.5 * temp_v**2 - 1.5 * temp_v_squared)
     )
-    return result.detach().clone()
+    return result
 
 def collision_relaxation(probab_density_f, velocity, rho, omega: Optional[float] = 0.5):
     """
@@ -274,8 +274,10 @@ if __name__ == "__main__":
     nx = 15
     ny = 10
     f = init_distribution(nx, ny, init_state=InitMode.UNIFORM)
-    rho = compute_density(f)
-    v = compute_velocity(f)
+    rho = torch.empty((nx, ny), dtype=torch.float32, device=DEVICE)
+    v = torch.empty((2, nx, ny), dtype=torch.float32, device=DEVICE)
+    compute_density(f, out=rho)
+    compute_velocity(f, out=v)
 
     # Increase the mass at a somewhat central point in the grid
     f[:, nx // 2, ny // 2] += 0.01 * f[:, nx // 2, ny // 2 - 2]
@@ -283,8 +285,8 @@ if __name__ == "__main__":
     # Calculate streaming part and plot density for 10 timesteps
     for step in range(20):
         streaming(f)
-        rho = compute_density(f)
-        v = compute_velocity(f)
+        compute_density(f, out=rho)
+        compute_velocity(f, out=v)
         if PLOT_FLAG:
             plot_density(rho, step)
             plot_velocity_field(v, step, nx, ny)
