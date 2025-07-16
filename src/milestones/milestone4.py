@@ -4,18 +4,18 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import math
 
-torch.set_float32_matmul_precision('high')  # Add after torch import
+torch.set_float32_matmul_precision('high')
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
 
 # -------------------- CONFIGURATION --------------------
-plot_dir = Path("plots/m4")
+plot_dir = Path("plots/milestones/m4")
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 NX, NY = 3000, 3000 # Grid size
 NSTEPS = 10000
 SAVE_EVERY = 100
-OMEGA_VALUES = [1.0]
+OMEGA_VALUES = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]  # Relaxation parameters
 u0 = 0.08  # initial amplitude (|u| < 0.1)
 rho0 = 1.0
 n = 1  # wave mode
@@ -121,7 +121,7 @@ def save_snapshot(u, rho, step, tag):
     plt.savefig(plot_dir / tag / "density" / f"density_{step:04d}.png")
     plt.close()
 
-@torch.compile(mode="max-autotune")  # <-- Add this line
+@torch.compile(mode="max-autotune")  
 def run_simulation(omega):
     """Run LBM simulation for a given omega and return amplitude decay list."""
     tag = f"omega_{omega:.2f}"

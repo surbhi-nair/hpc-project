@@ -75,7 +75,7 @@ def save_streamplot(velocity,
     streamplot = ax.streamplot(x, y, velocity_x, velocity_y)
 
     # Save plot
-    path = "data/sliding_lid_images"
+    path = "plots/sliding_lid_images"
     path_exists = os.path.exists(path)
     if not path_exists:
         # Create path if it does not exist

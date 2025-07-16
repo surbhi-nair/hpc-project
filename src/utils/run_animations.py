@@ -38,7 +38,7 @@ def run_milestone4_gifs(project_root, duration):
         create_animation(m4_dir, f"{omega_tag}_velocity_", f"{omega_tag}/m4_velocity.gif", duration)
 
 def run_milestone5_gifs(project_root, duration):
-    m5_dir = project_root / "plots" / "m5_lid_driven_300x300"
+    m5_dir = project_root / "plots" / "milestones/m5"
     # create_animation(m5_dir, "velocity_step_", "m5_velocity.gif", duration)
     m5streamline_dir = m5_dir / "streamplots"
     create_animation(m5streamline_dir, "sliding_lid_velocity_field_", "m5_streamlines.gif", duration)

@@ -83,7 +83,7 @@ def sliding_lid(
                 # boundary, the shape of vx_dict[<step>] is (lattice_size,)
                 vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
 
-                if PLOT_FLAG and PLOT_FLAG:
+                if PLOT_FLAG:
                     save_streamplot(velocity, step, ax)
 
     total_time = time.time() - start_time
