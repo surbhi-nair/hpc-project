@@ -93,7 +93,8 @@ def collide_and_boundary(f):
 # ==============================================
 
 def run_simulation():
-    torch.cuda.synchronize()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     f = initialize()
     start = time.time()
     

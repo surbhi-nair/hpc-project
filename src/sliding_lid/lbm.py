@@ -1,266 +1,168 @@
-"""Lattice Boltzmann Method core functions"""
-import matplotlib.pyplot as plt
+import torch
 import os
 import numpy as np
-import torch
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 from tqdm import trange
 from typing import Optional
-from globals import *
+import matplotlib.pyplot as plt
+from constants import *
 from utils import InitMode
 
+if PLOT_FLAG:
+    PLOT_DIR = Path("plots/lbm/")
+    PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
-def init_proba_density(width: Optional[int] = 15,
-                       height: Optional[int] = 10,
-                       n_channels: Optional[int] = 9,
-                       mode: Optional[int] = InitMode.EQUILIBRIUM,
-                       seed: Optional[bool] = False):
+
+def init_distribution(
+    nx: Optional[int] = 100,
+    ny: Optional[int] = 100,
+    n_dir: Optional[int] = 9,
+    init_state: Optional[int] = InitMode.UNIFORM,
+):
     """
     Initialize the probability density function.
     Args:
-        width (Optional[int]): The width of the lattice. Default 15.
-        height (Optional[int]): The height of the lattice. Default 10.
-        n_channels (Optional[int]): Number of channels of velocity discretization. Default 9.
-        mode (Optional[int]): Parameter determining the initialization mode. Default EQUILIBRIUM.
-        seed (Optional[bool]): Boolean flag for seed in random initialization. Used for testing.
-            Default False.
+        nx : Width of lattice
+        ny : Height of lattice
+        n_dir : Number of channels or directions in the lattice
+        init_state : Initial state of the lattice
     Returns:
-        Probability density function for all channels and every point in the
-            lattice.
-        """
-    # Initialization
-    proba_density = np.zeros((n_channels, width, height))
-
-    # Development mode initialized with one on the center position
-    if mode == InitMode.DEV:
-        proba_density[:, int(width // 2), int(height // 2)] = 1
-        return torch.tensor(proba_density, dtype=torch.float32, device=DEVICE)
-
-    # Equilibrium occupation numbers, initialized with equilibrium weights
-    elif mode == InitMode.EQUILIBRIUM:
-        for i in range(width):
-            for j in range(height):
-                proba_density[:, i, j] = weights
-
-    # Initialize with random numbers
-    elif mode == InitMode.RAND:
-        if seed:
-            np.random.seed(42)
-
-        proba_density = np.random.rand(n_channels * width * height).reshape((n_channels, width, height))
-    return torch.tensor(proba_density, dtype=torch.float32, device=DEVICE)
-
-
-def calculate_density(proba_density):
+        f = Probability density function for all channels and every point in the lattice
     """
-    Calculate the mass density at each given point.
+    # Initialize the probability density function with zeros
+    probab_density_f = torch.zeros((n_dir, nx, ny), dtype=torch.float32, device=DEVICE)
+
+    # Uniform initialization of the probability density function
+    if init_state == InitMode.UNIFORM:
+        for i in range(nx):
+            for j in range(ny):
+                probab_density_f[:, i, j] = WEIGHTS
+
+    # init_state initialized with 1 on the center position
+    if init_state == InitMode.TEST:
+        probab_density_f[:, int(nx // 2), int(ny // 2)] = 1
+        return torch.tensor(probab_density_f, dtype=torch.float32, device=DEVICE)
+
+    return torch.tensor(probab_density_f, dtype=torch.float32, device=DEVICE)
+
+
+def compute_density(probab_density_f):
+    """
+    Compute the density at each given lattice point
+    """
+    # Sum over the channels to get the density at each point
+    return torch.sum(probab_density_f, dim=0)
+
+
+def compute_velocity(probab_density_f):
+    """
+    Compute the velocity field at each given point.
     Args:
-        proba_density (np.ndarray): Probability density function of Lattice Boltzmann
-            Equation.
+        probab_density_f : Probability density function
     Returns:
-        density (np.ndarray): Mass density at each position of the grid of shape
-            (X, Y)
-    """
-    # Sum over the different channels of probability density function
-    return torch.sum(proba_density, dim=0)
-
-
-def calculate_velocity(proba_density):
-    """
-    Calculate the velocity field at each given point.
-    Args:
-        proba_density (np.ndarray): Probability density function of Lattice Boltzmann
-            Equation.
-    Returns:
-        The velocity field as a numpy array of shape (2, X, Y).
-        At each point in real space we get a vector depicting the average velocity
-        at the x- and y- direction.
+        The velocity field in shape (2, X, Y): at each point the vector gives the average velocity in the x and y direction
     """
 
-    density = calculate_density(proba_density)
-    # velocity_channels: (9, 2), proba_density: (9, X, Y)
-    # want velocity: (2, X, Y)
+    density = compute_density(probab_density_f)
     velocity = torch.matmul(
-        velocity_channels.T.to(proba_density.dtype).to(proba_density.device),
-        proba_density.reshape(9, -1)
+        CHANNEL_VELOCITIES.T.to(probab_density_f.dtype).to(probab_density_f.device),
+        probab_density_f.reshape(9, -1),
     ).reshape(2, *density.shape)
     return velocity / density
 
 
-def streaming(proba_density):
+def streaming(probab_density_f):
     """
-    Calculate the L.H.S. streaming operation of the Lattice Boltzmann equation
-    by shifting the components of the probability density function along a grid.
-    Args:
-        proba_density (np.ndarray): Probability density function of Lattice Boltzmann
-            Equation.
-    Returns:
-        None
+    Perform the streaming step of the Lattice Boltzmann method.
+    Shifts the distribution functions in their respective directions using periodic boundaries.
     """
-
-    n_channels = velocity_channels.shape[0]
-    for i in range(n_channels):
-        proba_density[i] = torch.roll(
-            proba_density[i],
-            shifts=(int(velocity_channels[i][0]), int(velocity_channels[i][1])),
-            dims=(0, 1)
+    n_dir = CHANNEL_VELOCITIES.shape[0]
+    for i in range(n_dir):
+        probab_density_f[i] = torch.roll(
+            probab_density_f[i],
+            shifts=(int(CHANNEL_VELOCITIES[i][0]), int(CHANNEL_VELOCITIES[i][1])),
+            dims=(0, 1),
         )
 
 
-def calculate_equilibrium_distro(density, velocity):
+def compute_equilibrium(rho, u):
     """
-    Calculate the equilibrium distribution given the density and average
-    velocity.
+    Calculate the equilibrium distribution given the density(rho) and average velocity.
     Args:
-        density (nd.array): Mass density at each position of the grid of shape
-            (X, Y).
-        velocity (nd.array): Average velocity at each position of the grid of shape
-            (2, X, Y)
+        rho : Mass density at each position of the grid
+        u : Average velocity at each position of the grid
     Returns:
         Equilibrium distribution at each (x, y) point of the grid.
     """
-    # velocity: (2, X, Y), velocity_channels: (9, 2)
-    v_flat = velocity.reshape(2, -1)  # (2, X*Y)
+    v_flat = u.reshape(2, -1)
     temp_v = torch.matmul(
-        velocity_channels.to(v_flat.dtype).to(v_flat.device), v_flat
-    ).reshape(9, *velocity.shape[1:])
-    temp_v_squared = torch.norm(velocity, dim=0) ** 2
-    # weights: (9,), density: (X, Y), temp_v: (9, X, Y), temp_v_squared: (X, Y)
-    result = weights[:, None, None] * (density * (1 + 3 * temp_v + 4.5 * temp_v**2 - 1.5 * temp_v_squared))
+        CHANNEL_VELOCITIES.to(v_flat.dtype).to(v_flat.device), v_flat
+    ).reshape(9, *u.shape[1:])
+    temp_v_squared = torch.norm(u, dim=0) ** 2
+    result = WEIGHTS[:, None, None] * (
+        rho * (1 + 3 * temp_v + 4.5 * temp_v**2 - 1.5 * temp_v_squared)
+    )
     return result
 
 
-def collision_relaxation(
-        proba_density,
-        velocity,
-        density,
-        omega: Optional[float] = 0.5):
+def collision_relaxation(probab_density_f, velocity, rho, omega: Optional[float] = 0.5):
     """
     Calculate the collision operation.
     Args:
-        proba_density (np.ndarray): Probability density function of Lattice Boltzmann
-        Equation.
-        velocity (np.ndarray): Average velocity at each position of the grid of shape
-            (2, X, Y)
-        density (np.ndarray): Mass density at each position of the grid of shape
-            (X, Y).
+        probab_density_f : Probability density function
+        velocity : Average velocity at each position of the grid of shape
+        rho : Mass density at each position of the grid of shape
         omega (Optional[float]): The collision frequency. Default value is 0.5
     Returns:
         The probability density function at each point in the grid after the
         streaming and collision operations are applied.
     """
-    eql_proba_density = calculate_equilibrium_distro(density, velocity)
-    proba_density += omega * (eql_proba_density - proba_density)
+    f_eq = compute_equilibrium(rho, velocity)
+    probab_density_f += omega * (f_eq - probab_density_f)
 
 
-def plot_density(density: np.array,
-                 iter: Optional[int] = 0,
-                 show: Optional[bool] = False) -> None:
+def plot_density(rho, step) -> None:
     """
     Create a heatmap of the density at each lattice point.
 
     Args:
-        density (np.ndarray): Mass density at each position of the grid.
-        show (Optional[bool]): Whether to display the graphs or save them.
-        iter (Optional[int]): Used to generate filename when saving the figures.
+        density : Mass density at each position of the grid.
+        step : Simulation step for labeling the plot.
     Returns:
         None
     """
-    # Convert to numpy if tensor
-    if torch.is_tensor(density):
-        density = density.cpu().numpy()
-    # Calculate the labels of x- and y-axis
-    width, height = density.shape
-
-    column_labels = list(range(width))
-    row_labels = list(range(height))
-
-    fig, ax = plt.subplots()
-    c = ax.pcolor(np.moveaxis(density, 0, 1), cmap=plt.cm.Reds)
-
-    # put the major ticks at the middle of each cell
-    _ = ax.set_xticks(np.arange(width) + 0.5, minor=False)
-    _ = ax.set_yticks(np.arange(height) + 0.5, minor=False)
-
-    _ = ax.invert_yaxis()
-
-    _ = ax.set_xticklabels(column_labels, minor=False)
-    _ = ax.set_yticklabels(row_labels, minor=False)
-    _ = ax.set_ylabel('y-coordinate')
-    _ = ax.set_xlabel('x-coordinate')
-    _ = ax.set_title('Density')
-
-    fig.colorbar(c, ax=ax)
-    plt.grid()
-
-    if show:
-        plt.show()
-
-    else:
-        path_exists = os.path.exists("data")
-        if not path_exists:
-            # Create path if it does not exist
-            os.makedirs("data")
-        print("Saving plots under /data")
-        plt.savefig('data/density_{}'.format(iter))
-        plt.show()
+    plt.imshow(rho.T, origin="lower", cmap="viridis")
+    plt.colorbar(label="Density")
+    plt.xlabel("Lattice X Position")
+    plt.ylabel("Lattice Y Position")
+    plt.title(f"Density at Step {step}")
+    plt.savefig(PLOT_DIR / f"density_step_{step:04d}.png")
+    plt.close()
 
 
-def plot_velocity_field(velocity: np.array,
-                        fig: plt.Figure,
-                        ax: plt.Axes,
-                        title: Optional[str] = "Velocity Field",
-                        y_label: Optional[str] = "Y",
-                        x_label: Optional[str] = "X") -> None:
-    # Convert to numpy if tensor
-    if torch.is_tensor(velocity):
-        velocity = velocity.cpu().numpy()
-    # Get dimensions
-    X, Y = velocity.shape[1:]
+def plot_velocity_field(u, step, nx, ny) -> None:
+        X, Y = np.meshgrid(np.arange(nx), np.arange(ny), indexing='ij')
 
-    # Sample points periodically for clarity in the plot
-    x_stride = max(X // 20, 1)
-    y_stride = max(Y // 20, 1)
-    x = np.arange(0, X, x_stride)
-    y = np.arange(0, Y, y_stride)
-    x_grid, y_grid = np.meshgrid(x, y)
-    velocity_x = np.moveaxis(velocity[0], 0, 1)[::x_stride, ::y_stride]
-    velocity_y = np.moveaxis(velocity[1], 0, 1)[::x_stride, ::y_stride]
+        plt.figure(figsize=(6, 4))
+        plt.quiver(X, Y, u[0].T, u[1].T, scale=1, scale_units='xy')
+        plt.xlabel("Lattice X Position")
+        plt.ylabel("Lattice Y Position")
+        plt.title(f"Velocity Field at Step {step}")
+        plt.savefig(PLOT_DIR / f"velocity_step_{step:04d}.png")
+        plt.close()
 
-    # Set ticks at sampled points only
-    ax.set_xticks(x)
-    ax.set_yticks(y)
 
-    # Set tick labels matching ticks
-    ax.set_xticklabels(x)
-    ax.set_yticklabels(y)
-
-    # Generate streamplot with color by velocity magnitude and improved colormap
-    streamplot = ax.streamplot(
-        x_grid, y_grid, velocity_x, velocity_y,
-        color=np.sqrt(velocity_x**2 + velocity_y**2), cmap='viridis'
-    )
-    # Add colorbar
-    fig.colorbar(streamplot.lines, ax=ax)
-
-    # Add improved labels and title
-    ax.set_ylabel(y_label, fontsize=12)
-    ax.set_xlabel(x_label, fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight='bold')
 
 def rigid_wall(
-        proba_density: np.array,
-        pre_streaming_proba_density: np.array,
-        location: Optional[str] = "lower") -> None:
+    probab_density_f: np.array,
+    pre_streaming_probab_density: np.array,
+    location: Optional[str] = "lower",
+) -> None:
     """
     Apply rigid wall boundary conditions.
     Args:
-        proba_density (np.ndarray): Probability density function of Lattice.
-        pre_streaming_proba_density (np.ndarray): Probability density function before the
-            streaming operator is applied
-        location (Optional[str]): Physical location of the boundary.
-            Currently, supports all boundary possibilities: ['left, 'right', lower', 'upper'].
+        probab_density_f : Probability density function of Lattice.
+        pre_streaming_probab_density : Probability density function before the streaming operator is applied
+        location (Optional[str]): Physical location of the boundary
     Returns:
          None.
     """
@@ -290,8 +192,7 @@ def rigid_wall(
         in_channels = left_in_channels
 
     else:
-        raise ValueError("Invalid location given: '" + location + "'. "
-                         "Allowed values are: 'upper', 'lower', 'right', or 'left'.")
+        raise ValueError("Invalid location given: '" + location)
 
     if location in ("upper", "lower"):
         # Loop over channels and apply boundary conditions
@@ -299,37 +200,38 @@ def rigid_wall(
             # Set temporary variables for convenience
             temp_in, temp_out = in_channels[i], out_channels[i]
             # Index of y's that are on the lower boundary is 0
-            proba_density[temp_in, :, idx] = \
-                pre_streaming_proba_density[temp_out, :, idx]
+            probab_density_f[temp_in, :, idx] = pre_streaming_probab_density[
+                temp_out, :, idx
+            ]
 
     elif location in ("right", "left"):
         for i in range(len(in_channels)):
             # Set temporary variables for convenience
             temp_in, temp_out = in_channels[i], out_channels[i]
 
-            proba_density[temp_in, idx, :] = \
-                pre_streaming_proba_density[temp_out, idx, :]
+            probab_density_f[temp_in, idx, :] = pre_streaming_probab_density[
+                temp_out, idx, :
+            ]
 
     else:
         raise ValueError("Invalid location provided")
 
 
 def moving_wall(
-        proba_density: np.array,
-        pre_streaming_proba_density: np.array,
-        wall_velocity: np.array,
-        density: np.array,
-        location: Optional[str] = "bottom") -> None:
+    probab_density_f: np.array,
+    pre_streaming_probab_density: np.array,
+    wall_velocity: np.array,
+    density: np.array,
+    location: Optional[str] = "bottom",
+) -> None:
     """
     Apply moving wall boundary conditions.
     Args:
-        proba_density (np.ndarray): Probability density function of Lattice.
-        pre_streaming_proba_density (np.ndarray): Probability density function before the
-            streaming operator is applied
-        wall_velocity (np.ndarray): Velocity of the moving wall as a vector.
-        density (np.ndarray): Mass density at each position of the grid.
-        location (Optional[str]): Physical location of the boundary. For Couette flow only
-            two possible positions: "upper" or "lower".
+        probab_density_f : Probability density function
+        pre_streaming_probab_density : Probability density function before the streaming operator is applied
+        wall_velocity : Velocity of the moving wall as a vector
+        density : Mass density at each position of the grid
+        location (Optional[str]): Physical location of the boundary
 
     Returns:
         None.
@@ -337,10 +239,7 @@ def moving_wall(
     # Calculate average density
     avg_density = density.mean()
 
-    if location == "lower":
-        raise NotImplementedError("Not Implemented yet.")
-
-    elif location == "upper":
+    if location == "upper":
         # Channels going out
         out_channels = up_out_channels
         # Channels going in
@@ -350,77 +249,35 @@ def moving_wall(
             # Set temporary variables for convenience
             temp_in, temp_out = in_channels[i], out_channels[i]
             # Calculate term due to velocity based on the channels going out
-            temp_term = \
-                (-2 * weights[temp_out] * avg_density / c_s_squared) * \
-                torch.dot(velocity_channels[temp_out].to(wall_velocity.dtype), wall_velocity)
+            temp_term = (
+                -2 * WEIGHTS[temp_out] * avg_density / c_s_squared
+            ) * torch.dot(
+                CHANNEL_VELOCITIES[temp_out].to(wall_velocity.dtype), wall_velocity
+            )
             # Index of y's that are on the upper boundary is equal to the
             # size of the lattice - 1, for simplicity use "-1" to access
-            proba_density[temp_in, :, -1] = \
-                pre_streaming_proba_density[temp_out, :, -1] + temp_term
-
+            probab_density_f[temp_in, :, -1] = (
+                pre_streaming_probab_density[temp_out, :, -1] + temp_term
+            )
     else:
-        raise ValueError("Invalid location given: '" + location + "'. "
-                         "Allowed values are: 'upper' or 'lower'.")
-
-
-def pressure_gradient(
-        proba_density: np.array,
-        density: np.array,
-        velocity: np.array,
-        density_input: float,
-        density_output: float,
-        flow: Optional[str] = "left_to_right",
-) -> None:
-    """
-    Apply periodic boundary conditions with pressure gradient.
-    Args:
-        proba_density (np.ndarray): Probability density function of Lattice.
-        density (np.ndarray): Mass density at each position of the grid of shape (X, Y).
-        velocity (np.ndarray): Velocity at each position of the grid of shape
-            (2, X, Y).
-        density_input (float): Density value at the input.
-        density_output (float): Density value at the output.
-        flow (Optional[str]): Denotes the direction of the flow. Currently, only
-            left to right direction in x-axis is supported.
-
-    Returns:
-        None.
-    """
-    if flow == "left_to_right":
-        # Calculate equilibrium distribution
-        proba_equilibrium = calculate_equilibrium_distro(density, velocity)
-
-        # Calculate equilibrium distribution using input density and output velocity
-        equil_din_vout = calculate_equilibrium_distro(density_input, velocity[:, -2, :])
-
-        # Calculate equilibrium distribution using output density and input velocity
-        equil_dout_vin = calculate_equilibrium_distro(density_output, velocity[:, 1, :])
-
-        # proba density at inlet
-        proba_density[:, 0, :] = \
-            equil_din_vout[:, :] + (proba_density[:, -2, :] - proba_equilibrium[:, -2, :])
-        # proba density at outlet
-        proba_density[:, -1, :] = \
-            equil_dout_vin[:, :] + (proba_density[:, 1, :] - proba_equilibrium[:, 1, :])
-
-    else:
-        raise NotImplementedError("Flows other than left-to-right are not yet implemented.")
+        raise ValueError("Invalid location given: '" + location)
 
 
 if __name__ == "__main__":
-    # Initialize density function at equilibrium
-    p_stream = init_proba_density(15, 15, mode=InitMode.EQUILIBRIUM)
-    # Calculate density
-    density = calculate_density(p_stream)
-    # Calculate velocity
-    v = calculate_velocity(p_stream)
+    nx = 15
+    ny = 10
+    f = init_distribution(nx, ny, init_state=InitMode.UNIFORM)
+    rho = compute_density(f)
+    v = compute_velocity(f)
 
     # Increase the mass at a somewhat central point in the grid
-    p_stream[:, 7, 7] += 0.01 * p_stream[:, 7, 5]
+    f[:, nx // 2, ny // 2] += 0.01 * f[:, nx // 2, ny // 2 - 2]
 
-    # Calculate streaming part and plot density for 4 timesteps
-    for i in trange(4):
-        streaming(p_stream)
-        density = calculate_density(p_stream)
-        v = calculate_velocity(p_stream)
-        plot_density(density, i, False)
+    # Calculate streaming part and plot density for 10 timesteps
+    for step in trange(20):
+        streaming(f)
+        rho = compute_density(f)
+        v = compute_velocity(f)
+        if PLOT_FLAG:
+            plot_density(rho, step)
+            plot_velocity_field(v, step, nx, ny)

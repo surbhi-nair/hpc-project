@@ -16,7 +16,7 @@ WEIGHTS = torch.tensor([
 ], dtype=torch.float32)
 
 class LBMTest:
-    def __init__(self, nx=300, ny=300, tau=0.6, test_case='test1', device=DEVICE):
+    def __init__(self, nx=50, ny=50, tau=0.6, test_case='test1', device=DEVICE):
         self.nx = nx
         self.ny = ny
         self.ndir = 9
@@ -36,7 +36,9 @@ class LBMTest:
         if self.test_case == 'test1':
             rho[self.nx // 2, self.ny // 2] = 0.9
         elif self.test_case == 'test2':
-            u[self.nx // 2, self.ny // 2, 0] = 0.05
+            # u[self.nx // 2, self.ny // 2, 0] = 0.05
+            cx, cy = self.nx // 2, self.ny // 2
+            u[cx-2:cx+3, cy-2:cy+3, 0] = 0.05
         self.f = self.compute_equilibrium(rho, u)
 
     def compute_equilibrium(self, rho, u):
@@ -74,27 +76,47 @@ class LBMTest:
         out_dir.mkdir(parents=True, exist_ok=True)
         plt.imshow(rho.T, origin="lower", cmap="viridis")
         plt.colorbar(label="Density")
-        plt.xlabel("Lattice X Position (grid index)")
-        plt.ylabel("Lattice Y Position (grid index)")
+        plt.xlabel("Lattice X Position")
+        plt.ylabel("Lattice Y Position")
         plt.title(f"Density at Step {step}")
         plt.savefig(out_dir / f"density_step_{step:04d}.png")
         plt.close()
 
     def save_velocity_field(self, step, out_dir):
         u = self.compute_velocity().cpu().numpy()
-        X, Y = np.meshgrid(np.arange(self.nx), np.arange(self.ny), indexing='ij')
+        # X, Y = np.meshgrid(np.arange(self.nx), np.arange(self.ny), indexing='ij')
+            # Create meshgrid - note the transpose for correct orientation
+        Y, X = np.meshgrid(np.arange(self.ny), np.arange(self.nx))
+        
+        # Calculate velocity magnitude for coloring
+        vel_magnitude = np.sqrt(u[..., 0]**2 + u[..., 1]**2)
+        #print(f"[Step {step}] Max velocity magnitude: {vel_magnitude.max():.6f}")
+        plt.figure(figsize=(10, 8))
         out_dir.mkdir(parents=True, exist_ok=True)
-        plt.figure(figsize=(6, 4))
-        plt.quiver(X, Y, u[..., 0], u[..., 1], scale=1.0, scale_units='xy')
-        #plt.streamplot(X, Y, u[..., 0], u[..., 1], density=1.5, linewidth=1, color=np.sqrt(u[..., 0]**2 + u[..., 1]**2), cmap='plasma')
-        plt.xlabel("Lattice X Position (grid index)")
-        plt.ylabel("Lattice Y Position (grid index)")
+        #plt.figure(figsize=(6, 4))
+        #plt.quiver(X, Y, u[..., 0], u[..., 1], scale=1.0, scale_units='xy')
+        ##plt.streamplot(X, Y, u[..., 0], u[..., 1], density=1.5, linewidth=1, color=np.sqrt(u[..., 0]**2 + u[..., 1]**2), cmap='plasma')
+        # plt.streamplot(
+        # X.T, Y.T, 
+        # u[...,0].T, 
+        # u[...,1].T,
+        # density=2,
+        # color=vel_magnitude.T,
+        # cmap='viridis',
+        # linewidth=1.5
+        # )
+        stride = 4
+        plt.quiver(X, Y, u[..., 0], u[..., 1], scale_units='xy')  # omit scale=
+        plt.xlabel("Lattice X Position")
+        plt.ylabel("Lattice Y Position")
         plt.title(f"Velocity Field at Step {step}")
+        plt.tight_layout()
         plt.savefig(out_dir / f"velocity_step_{step:04d}.png")
         plt.close()
 
-    def run(self, steps=1000, save_every=1):
-        base_dir = Path("plots") / f"m3_{self.test_case}"
+    def run(self, steps=500, save_every=10):
+        print(f"Running LBM test case: {self.test_case}")
+        base_dir = Path("plots/milestones") / f"m3_{self.test_case}"
         velocities = []
         for step in range(steps):
             self.collide()

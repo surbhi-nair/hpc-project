@@ -1,18 +1,13 @@
-"""Utilities and side functions for main calculations"""
+import torch
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import torch
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 from enum import IntEnum
-from globals import c_s_squared
-
+from constants import *
 
 class InitMode(IntEnum):
-    DEV = 1
-    RAND = 2
-    EQUILIBRIUM = 3
+    UNIFORM = 1
+    TEST = 2
 
 
 def theoretical_viscosity(omega: float = 1.) -> float:
@@ -21,7 +16,7 @@ def theoretical_viscosity(omega: float = 1.) -> float:
     Args:
         omega (float): collision frequency (inverse of relaxation time).
     Returns:
-        Fluid viscosity.
+        Theoretical fluid viscosity value.
     """
     return (1/omega - 0.5) / 3
 
@@ -29,14 +24,14 @@ def theoretical_viscosity(omega: float = 1.) -> float:
 def theoretical_decay_calcs(initial_amp: float,
                             omega: float,
                             length: float,
-                            time: list
+                            timestep: list
 ) -> torch.Tensor:
     """
     Calculate the theoretical decay.
         initial_amp (float): Sinusoidal wave amplitude in the initial condition
         omega (float): collision frequency (inverse of relaxation time).
         length (float): lattice length on the y-coordinates
-        time (float): timestep
+        timestep (float): timestep
     Returns:
         Theoretically calculated decay.
 
@@ -45,48 +40,9 @@ def theoretical_decay_calcs(initial_amp: float,
     viscosity = theoretical_viscosity(omega)
 
     # Theoretical calculation of the exponential decay using torch
-    time_tensor = torch.tensor(time, dtype=torch.float32, device=DEVICE)
+    time_tensor = torch.tensor(timestep, dtype=torch.float32, device=DEVICE)
     decay = -viscosity * (2 * np.pi / length) ** 2 * time_tensor
     return initial_amp * torch.exp(decay)
-
-
-def theoretical_poiseuille_flow(
-        density,
-        omega: float,
-        density_input: float,
-        density_output: float
-) -> torch.Tensor:
-    """
-    Calculate the analytical solution of the velocity field for a
-        Hagen-Poiseuille flow in a pipe.
-
-    Args:
-        density (np.ndarray): Mass density at each position of the grid.
-        omega (float): Collision frequency
-        density_input (float): Density value at the input.
-        density_output (float): Density value at the output.
-
-    Returns:
-        The velocity field as a np.ndarray.
-    """
-    # Get dimensions
-    X, Y = density.shape
-
-    # Create points to be returned
-    points = torch.linspace(0, Y, Y, device=DEVICE)
-
-    # Calculate the mean value of density using torch
-    mean_density = torch.mean(torch.tensor(density, dtype=torch.float32, device=DEVICE)) if isinstance(density, np.ndarray) else torch.mean(density)
-    # Calculate viscosity
-    viscosity = theoretical_viscosity(omega)
-    # Calculate dynamic viscosity
-    dynamic_viscosity = mean_density * viscosity
-    # Calculate derivative nominator as the difference in derivatives
-    derivative_nom = density_output - density_input
-
-    # Calculate velocity field
-    return -(derivative_nom * points * (Y - points)) / (2 * X * dynamic_viscosity) * c_s_squared
-
 
 def save_streamplot(velocity,
                     step: int,

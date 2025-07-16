@@ -11,21 +11,21 @@ python src/utils/run_animations.py --milestone 3  # both test1 and test2
 '''
 
 def run_milestone2_gifs(project_root, duration):
-    m2_dir = project_root / "plots" / "m2"
+    m2_dir = project_root / "plots" / "milestones/m2"
     create_animation(m2_dir, "m2_density_step_", "m2_density.gif", duration)
     create_animation(m2_dir, "m2_velocity_step_", "m2_velocity.gif", duration)
 
 def run_milestone3_gifs(project_root, duration, test=None):
     if test == 1 or test is None:
-        test1_dir = project_root / "plots" / "m3_test1"
+        test1_dir = project_root / "plots/milestones" / "m3_test1"
         create_animation(test1_dir, "density_step_", "m3_test1_density.gif", duration)
         create_animation(test1_dir, "velocity_step_", "m3_test1_velocity.gif", duration)
-        plot_velocity_decay_with_steady_state("test1")
+        #plot_velocity_decay_with_steady_state("test1")
     if test == 2 or test is None:
-        test2_dir = project_root / "plots" / "m3_test2"
+        test2_dir = project_root / "plots/milestones" / "m3_test2"
         create_animation(test2_dir, "density_step_", "m3_test2_density.gif", duration)
         create_animation(test2_dir, "velocity_step_", "m3_test2_velocity.gif", duration)
-        plot_velocity_decay_with_steady_state("test2")
+        #plot_velocity_decay_with_steady_state("test2")
 
 def run_milestone4_gifs(project_root, duration):
     m4_dir = project_root / "plots" / "m4"

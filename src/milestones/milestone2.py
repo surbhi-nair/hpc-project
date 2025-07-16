@@ -110,7 +110,7 @@ class LBMGrid2D:
             # resolve "plots/" relative to the project root
             current_file = Path(__file__).resolve()
             project_root = current_file.parents[2]  # go up from milestone2.py → src → project root
-            out_dir = project_root / "plots/m2"
+            out_dir = project_root / "plots/milestones/m2"
 
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,7 +136,7 @@ class LBMGrid2D:
         if out_dir is None:
             current_file = Path(__file__).resolve()
             project_root = current_file.parents[2]
-            out_dir = project_root / "plots/m2"
+            out_dir = project_root / "plots/milestones/m2"
 
         out_dir.mkdir(parents=True, exist_ok=True)
         rho = self.compute_density().to("cpu").numpy()
