@@ -170,12 +170,16 @@ def run_simulation():
     blups = total_updates / gpu_time_sec / 1e9
     
     print(f"========= Performance: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
+    mlups = total_updates / gpu_time_sec / 1e6
+    print(f"========= Performance: {mlups:.3f} MLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
 
     end = time.time()
     T = end - start
     updates = NSTEPS * NX * NY
     blups = updates / T / 1e9
     print(f"Performance: {blups:.3f} billion lattice updates per second (BLUPS)")
+    mlups = updates / T / 1e6
+    print(f"Performance: {mlups:.3f} million lattice updates per second (MLUPS)")
 
     # Optionally: save vx_dict for later analysis/visualization
     if PLOT_FLAG:
