@@ -50,7 +50,7 @@ def compute_density(probab_density_f):
     Compute the density at each given lattice point
     """
     # Sum over the channels to get the density at each point
-    return torch.sum(probab_density_f, dim=0)
+    return torch.sum(probab_density_f, dim=0).detach().clone()
 
 @torch.compile(mode="max-autotune")
 def compute_velocity(probab_density_f):
@@ -67,7 +67,7 @@ def compute_velocity(probab_density_f):
         CHANNEL_VELOCITIES.T.to(probab_density_f.dtype).to(probab_density_f.device),
         probab_density_f.reshape(9, -1),
     ).reshape(2, *density.shape)
-    return velocity / density
+    return (velocity / density).detach().clone()
 
 @torch.compile(mode="max-autotune")
 def streaming(probab_density_f):
@@ -115,7 +115,7 @@ def compute_equilibrium(rho, u):
     result = WEIGHTS[:, None, None] * (
         rho * (1 + 3 * temp_v + 4.5 * temp_v**2 - 1.5 * temp_v_squared)
     )
-    return result.clone()
+    return result.detach().clone()
 
 @torch.compile(mode="max-autotune")
 def collision_relaxation(probab_density_f, velocity, rho, omega: Optional[float] = 0.5):
