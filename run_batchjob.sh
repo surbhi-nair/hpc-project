@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_a100_il
 #SBATCH --gres=gpu:1
 #SBATCH --time=00:30:00
 #SBATCH --job-name=pytorch_test
