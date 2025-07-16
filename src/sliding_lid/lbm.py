@@ -44,7 +44,6 @@ def init_distribution(
 
     return torch.tensor(probab_density_f, dtype=torch.float32, device=DEVICE)
 
-@torch.compile(mode="max-autotune")
 def compute_density(probab_density_f):
     """
     Compute the density at each given lattice point
@@ -52,7 +51,6 @@ def compute_density(probab_density_f):
     # Sum over the channels to get the density at each point
     return torch.sum(probab_density_f, dim=0).detach().clone()
 
-@torch.compile(mode="max-autotune")
 def compute_velocity(probab_density_f):
     """
     Compute the velocity field at each given point.
@@ -69,7 +67,6 @@ def compute_velocity(probab_density_f):
     ).reshape(2, *density.shape)
     return (velocity / density).detach().clone()
 
-@torch.compile(mode="max-autotune")
 def streaming(probab_density_f):
     """
     Perform the streaming step of the Lattice Boltzmann method.
@@ -97,7 +94,6 @@ def streaming(probab_density_f):
         for i in range(9)
     ])
 
-@torch.compile(mode="max-autotune")
 def compute_equilibrium(rho, u):
     """
     Calculate the equilibrium distribution given the density(rho) and average velocity.
@@ -117,7 +113,6 @@ def compute_equilibrium(rho, u):
     )
     return result.detach().clone()
 
-@torch.compile(mode="max-autotune")
 def collision_relaxation(probab_density_f, velocity, rho, omega: Optional[float] = 0.5):
     """
     Calculate the collision operation.
@@ -165,7 +160,6 @@ def plot_velocity_field(u, step, nx, ny) -> None:
         plt.close()
 
 
-@torch.compile(mode="max-autotune")
 def rigid_wall(
     probab_density_f: torch.Tensor,
     pre_streaming_probab_density: torch.Tensor,
@@ -230,7 +224,6 @@ def rigid_wall(
     else:
         raise ValueError("Invalid location provided")
 
-@torch.compile(mode="max-autotune")
 def moving_wall(
     probab_density_f: torch.Tensor,
     pre_streaming_probab_density: torch.Tensor,
