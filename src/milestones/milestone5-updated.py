@@ -35,7 +35,7 @@ SHIFTS = torch.tensor([[int(e[0]), int(e[1])] for e in E], device=DEVICE)
 # ==============================================
 # Simulation Parameters
 # ==============================================
-NX, NY = 3000, 3000  # Grid size
+NX, NY = 20000, 20000  # Grid size
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
