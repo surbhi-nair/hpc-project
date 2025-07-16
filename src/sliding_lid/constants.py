@@ -30,7 +30,7 @@ WEIGHTS = torch.tensor(
 )
 
 
-PLOT_FLAG = True  # Set to True to enable plotting
+PLOT_FLAG = False  # Set to True to enable plotting
 
 # Shear wave decay
 SW_EPSILON = 0.05
