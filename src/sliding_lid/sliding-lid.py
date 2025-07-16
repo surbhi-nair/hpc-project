@@ -10,6 +10,7 @@ from typing import Optional
 from utils import theoretical_viscosity, save_streamplot
 from constants import *
 from torch.profiler import profile, record_function, ProfilerActivity
+from torch.utils.checkpoint import checkpoint
 
 torch.backends.cuda.matmul.allow_tf32 = True  # Allow TF32 for faster matrix multiplications
 torch.set_float32_matmul_precision('high')  # Enable TF32 for better performance
@@ -79,7 +80,7 @@ def sliding_lid(
                 lbm.collision_relaxation(prob_density, vel, dens, omega=omega_val)
                 return prob_density
 
-            probab_density_f = torch.utils.checkpoint.checkpoint(collision_fn, probab_density_f, velocity, rho, omega)
+            probab_density_f = checkpoint(collision_fn, probab_density_f, velocity, rho, omega)
 
             # Streaming
             lbm.streaming(probab_density_f)
