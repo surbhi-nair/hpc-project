@@ -44,7 +44,7 @@ def init_distribution(
 
     return torch.tensor(probab_density_f, dtype=torch.float32, device=DEVICE)
 
-
+@torch.compile(mode="max-autotune")
 def compute_density(probab_density_f):
     """
     Compute the density at each given lattice point
@@ -52,7 +52,7 @@ def compute_density(probab_density_f):
     # Sum over the channels to get the density at each point
     return torch.sum(probab_density_f, dim=0)
 
-
+@torch.compile(mode="max-autotune")
 def compute_velocity(probab_density_f):
     """
     Compute the velocity field at each given point.
@@ -69,21 +69,35 @@ def compute_velocity(probab_density_f):
     ).reshape(2, *density.shape)
     return velocity / density
 
-
+@torch.compile(mode="max-autotune")
 def streaming(probab_density_f):
     """
     Perform the streaming step of the Lattice Boltzmann method.
     Shifts the distribution functions in their respective directions using periodic boundaries.
     """
-    n_dir = CHANNEL_VELOCITIES.shape[0]
-    for i in range(n_dir):
-        probab_density_f[i] = torch.roll(
-            probab_density_f[i],
-            shifts=(int(CHANNEL_VELOCITIES[i][0]), int(CHANNEL_VELOCITIES[i][1])),
-            dims=(0, 1),
-        )
+    # n_dir = CHANNEL_VELOCITIES.shape[0]
+    # for i in range(n_dir):
+    #     probab_density_f[i] = torch.roll(
+    #         probab_density_f[i],
+    #         shifts=(int(CHANNEL_VELOCITIES[i][0]), int(CHANNEL_VELOCITIES[i][1])),
+    #         dims=(0, 1),
+    #     )
+    """Fully vectorized streaming - much faster"""
+    # Pre-compute all shifts to avoid Python loops
+    shifts = torch.tensor([
+        [int(CHANNEL_VELOCITIES[i][0]), int(CHANNEL_VELOCITIES[i][1])] 
+        for i in range(9)
+    ], device=DEVICE)
+    
+    # Vectorized streaming using stack
+    probab_density_f[:] = torch.stack([
+        torch.roll(probab_density_f[i], 
+                  shifts=tuple(shifts[i].tolist()), 
+                  dims=(0, 1))
+        for i in range(9)
+    ])
 
-
+@torch.compile(mode="max-autotune")
 def compute_equilibrium(rho, u):
     """
     Calculate the equilibrium distribution given the density(rho) and average velocity.
@@ -103,7 +117,7 @@ def compute_equilibrium(rho, u):
     )
     return result
 
-
+@torch.compile(mode="max-autotune")
 def collision_relaxation(probab_density_f, velocity, rho, omega: Optional[float] = 0.5):
     """
     Calculate the collision operation.
@@ -151,10 +165,10 @@ def plot_velocity_field(u, step, nx, ny) -> None:
         plt.close()
 
 
-
+@torch.compile(mode="max-autotune")
 def rigid_wall(
-    probab_density_f: np.array,
-    pre_streaming_probab_density: np.array,
+    probab_density_f: torch.Tensor,
+    pre_streaming_probab_density: torch.Tensor,
     location: Optional[str] = "lower",
 ) -> None:
     """
@@ -216,12 +230,12 @@ def rigid_wall(
     else:
         raise ValueError("Invalid location provided")
 
-
+@torch.compile(mode="max-autotune")
 def moving_wall(
-    probab_density_f: np.array,
-    pre_streaming_probab_density: np.array,
-    wall_velocity: np.array,
-    density: np.array,
+    probab_density_f: torch.Tensor,
+    pre_streaming_probab_density: torch.Tensor,
+    wall_velocity: torch.Tensor,
+    density: torch.Tensor,
     location: Optional[str] = "bottom",
 ) -> None:
     """
@@ -274,7 +288,7 @@ if __name__ == "__main__":
     f[:, nx // 2, ny // 2] += 0.01 * f[:, nx // 2, ny // 2 - 2]
 
     # Calculate streaming part and plot density for 10 timesteps
-    for step in trange(20):
+    for step in range(20):
         streaming(f)
         rho = compute_density(f)
         v = compute_velocity(f)

@@ -9,12 +9,16 @@ from tqdm import trange
 from typing import Optional
 from utils import theoretical_viscosity, save_streamplot
 from constants import *
+from torch.profiler import profile, record_function, ProfilerActivity
+
+torch.backends.cuda.matmul.allow_tf32 = True  # Allow TF32 for faster matrix multiplications
+torch.set_float32_matmul_precision('high')  # Enable TF32 for better performance
 
 if PLOT_FLAG:
     PLOT_DIR = Path("plots/sliding_lid/")
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
-@torch.compile(mode="max-autotune")
+# @torch.compile(mode="reduce-overhead")
 def sliding_lid(
         probab_density_f,
         lid_velocity,
@@ -57,17 +61,26 @@ def sliding_lid(
     end_event = torch.cuda.Event(enable_timing=True)
     start_event.record()
 
-    with torch.no_grad():
-    # For each iteration step
-        for step in trange(steps, desc="Sliding lid"):
-            # Calculate density
-            rho = lbm.compute_density(probab_density_f)
-            # Calculate velocity
-            velocity = lbm.compute_velocity(probab_density_f)
-            # Perform collision/relaxation
-            lbm.collision_relaxation(probab_density_f, velocity, rho, omega=omega)
-            # Keep the probability density function pre-streaming
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                 record_shapes=True,
+                 profile_memory=True,
+                 with_stack=True) as prof:
+        for step in range(steps, desc="Sliding lid"):
             pre_stream_probab_density_f = probab_density_f.clone()
+
+            with torch.no_grad():
+                # Calculate density
+                rho = lbm.compute_density(probab_density_f)
+                # Calculate velocity
+                velocity = lbm.compute_velocity(probab_density_f)
+
+            # Use checkpointing for collision_relaxation for memory efficiency
+            def collision_fn(prob_density, vel, dens, omega_val):
+                lbm.collision_relaxation(prob_density, vel, dens, omega=omega_val)
+                return prob_density
+
+            probab_density_f = torch.utils.checkpoint.checkpoint(collision_fn, probab_density_f, velocity, rho, omega)
+
             # Streaming
             lbm.streaming(probab_density_f)
             # Apply boundary conditions on the bottom rigid wall
@@ -80,18 +93,14 @@ def sliding_lid(
             # Apply boundary conditions on the right rigid wall
             lbm.rigid_wall(probab_density_f, pre_stream_probab_density_f, "right")
 
-            if step % keep_every_steps == 0:
+            if step % keep_every_steps == 0 and PLOT_FLAG:
                 # Keep the velocity in a slice on the axis that is perpendicular to the moving
                 # boundary, the shape of vx_dict[<step>] is (lattice_size,)
                 vx_dict[step] = torch.moveaxis(velocity[0], 0, 1)[:, x_shape // 2]
+                save_streamplot(velocity, step, ax)
 
-                if PLOT_FLAG:
-                    save_streamplot(velocity, step, ax)
-
-    # total_time = time.time() - start_time
-    # total_lattice_updates = steps * x_shape * y_shape
-    # blups = total_lattice_updates / total_time / 1e9
-    # print(f"\nBLUPS Performance: {blups:.3f} Billion Lattice Updates Per Second")
+    print("\n==== Torch Profiler Summary ====")
+    print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
 
     end_event.record()
     torch.cuda.synchronize()  # Wait for GPU to finish
@@ -99,7 +108,7 @@ def sliding_lid(
     total_updates = steps * x_shape * y_shape
     blups = total_updates / gpu_time_sec / 1e9
     
-    print(f"========= Performance: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
+    print(f"========= Optimized GPU Performance: {blups:.3f} BLUPS (GPU Time: {gpu_time_sec:.3f} s) =========")
 
     if PLOT_FLAG:
         # Plotting

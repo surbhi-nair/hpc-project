@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import time
 
+torch.set_float32_matmul_precision('high')  # Enable TF32 for better performance
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Milestone 5 - Using device:", DEVICE)
 
