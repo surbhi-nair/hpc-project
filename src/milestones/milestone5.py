@@ -139,6 +139,8 @@ def save_streamplot(u, step):
     plt.close(fig)
 def run_simulation():
     """Main simulation loop."""
+    print("Running simulation (Milestone 5) with parameters:")
+    print(f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS}, OMEGA: {OMEGA}, TAU: {TAU}, LID_VELOCITY: {LID_VELOCITY}")
     rho, u, f = initialize()
     # Dictionary to store the x-component of velocity along the vertical centerline at intervals
     vx_dict = {}

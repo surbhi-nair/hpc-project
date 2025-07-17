@@ -218,7 +218,8 @@ def find_best_omega(omega_vals, nu_numeric):
 if __name__ == "__main__":
     viscosity_measurements = []
     if(DEVICE.type == 'cuda'):
-        print("Using GPU for simulation")
+        print("Using GPU for simulation (Milestone 4 )")
+        print(f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS},  | OMEGA_VALUES: {OMEGA_VALUES}")
         for omega in OMEGA_VALUES:
             print(f"Running simulation for omega = {omega:.2f}")
             amp_decay, tag = run_simulation(omega)

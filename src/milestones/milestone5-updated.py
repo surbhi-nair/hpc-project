@@ -35,7 +35,7 @@ SHIFTS = torch.tensor([[int(e[0]), int(e[1])] for e in E], device=DEVICE)
 # ==============================================
 # Simulation Parameters
 # ==============================================
-NX, NY = 20000, 20000  # Grid size
+NX, NY = 10000, 10000  # Grid size
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
@@ -93,6 +93,8 @@ def collide_and_boundary(f):
 # ==============================================
 
 def run_simulation():
+    print(" Running simulation(Milestone 5 updated) with parameters :")
+    print(f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS}, OMEGA: {OMEGA}, TAU: {TAU}, LID_VELOCITY: {LID_VELOCITY}")
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     f = initialize()
