@@ -35,7 +35,7 @@ SHIFTS = torch.tensor([[int(e[0]), int(e[1])] for e in E], device=DEVICE)
 # ==============================================
 # Simulation Parameters
 # ==============================================
-NX, NY = 10000, 10000  # Grid size
+NX, NY = 30000, 30000  # Grid size
 NSTEPS = 10000
 OMEGA = 1.0
 TAU = 1 / OMEGA
@@ -111,7 +111,9 @@ def run_simulation():
     
     torch.cuda.synchronize()
     final_blups = (NSTEPS * NX * NY) / (time.time() - start) / 1e9
+    mlups = (NSTEPS * NX * NY) / (time.time() - start) / 1e6
     print(f"Final BLUPS: {final_blups:.2f}")
+    print(f"Final MLUPS: {mlups:.2f}")
 
 if __name__ == "__main__":
     run_simulation()
