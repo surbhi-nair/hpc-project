@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
-import psutil
 import GPUtil
-import platform
 import torch
 import time
 from pathlib import Path
