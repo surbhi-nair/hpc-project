@@ -134,7 +134,8 @@ def run_simulation():
 # ==============================================
 def benchmark_and_plot():
     print("Running benchmark and plotting... on DEVICE:", DEVICE)
-    grid_sizes = [1000, 3000, 5000, 10000, 15000, 20000, 25000, 30000]
+    # grid_sizes = [1000, 3000, 5000, 10000, 15000, 20000, 25000, 30000]
+    grid_sizes = [1000, 3000, 5000, 8000, 10000, 12000]
     mlups_results, power_draws, gpu_elapsed_times = [], [], []
 
     # CPU baseline - Fix: Create CPU versions of tensors
@@ -181,6 +182,7 @@ def benchmark_and_plot():
 
     baseline_updates = cpu_grid * cpu_grid * cpu_steps
     for nx in grid_sizes:
+        print(f"Running benchmark for grid size {nx}x{nx}...")
         steps = 2000
         f = torch.ones((9, nx, nx), device=DEVICE) * 0.1
         torch.cuda.synchronize()
@@ -193,12 +195,20 @@ def benchmark_and_plot():
         updates = nx * nx * steps
         mlups_results.append(updates / elapsed / 1e6)
         gpu_elapsed_times.append(elapsed)
+        print(f"Grid {nx}x{nx}, Steps {steps}, MLUPS: {mlups_results[-1]:.2f}, Time: {elapsed:.2f}s")
         try:
             gpus = GPUtil.getGPUs()
             power_draws.append(gpus[0].powerDraw if gpus else 0)
         except:
             power_draws.append(0)
+        import gc
 
+        # After each benchmark run
+        del f
+        torch.cuda.empty_cache()
+        gc.collect()
+
+    print("Benchmarking complete. Plotting now..")
     # Calculations
     mlups_baseline = mlups_results[0]
     cpu_est_times = [
