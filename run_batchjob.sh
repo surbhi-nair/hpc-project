@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_a100_il
 #SBATCH --gres=gpu:1
 #SBATCH --time=00:30:00
 #SBATCH --job-name=pytorch_test
@@ -13,6 +13,7 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
 echo "GPUs: $CUDA_VISIBLE_DEVICES"
 echo "Python: $(which python)"
+echo "Partition: A100 IL"
 
 # Load conda (adjust module name if needed)
 module load devel/miniforge/24.11.0-python-3.12
