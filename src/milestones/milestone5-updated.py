@@ -50,6 +50,10 @@ LID_VELOCITY = 0.1
 PLOT_DIR = Path("plots/milestones/m5")
 PLOT_DIR.mkdir(exist_ok=True)
 
+PLOT_DIR_B = Path("plots/milestones/m5_benchmark")
+PLOT_DIR_B.mkdir(exist_ok=True)
+
+
 # ==============================================
 # Core Functions (Fully Vectorized)
 # ==============================================
@@ -221,7 +225,7 @@ def benchmark_and_plot():
     mlups_per_watt = [m / p if p > 0 else 0 for m, p in zip(mlups_results, power_draws)]
 
     # Plotting
-    PLOT_DIR.mkdir(exist_ok=True, parents=True)
+    PLOT_DIR_B.mkdir(exist_ok=True, parents=True)
 
     def plot_graph(yvals, title, ylabel, filename, annotations=None, color="blue"):
         plt.figure()
@@ -241,7 +245,7 @@ def benchmark_and_plot():
                     fontsize=8,
                 )
         # plt.savefig(PLOT_DIR / filename)
-        plt.savefig(PLOT_DIR / f"{timestamp}_{filename}")
+        plt.savefig(PLOT_DIR_B / f"{timestamp}_{filename}")
         plt.close()
 
     plot_graph(
@@ -288,7 +292,7 @@ def benchmark_and_plot():
     plt.grid(True, axis="y")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(PLOT_DIR / "cpu_vs_gpu_runtime.png")
+    plt.savefig(PLOT_DIR_B / "cpu_vs_gpu_runtime.png")
     plt.close()
 
 
