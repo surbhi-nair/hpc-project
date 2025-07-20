@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import numpy as np
 import argparse
+from datetime import datetime
 
 # Set device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -133,9 +134,10 @@ def run_simulation():
 # Benchmarking and Plotting Function
 # ==============================================
 def benchmark_and_plot():
-    print("Running benchmark and plotting... on DEVICE:", DEVICE)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    print("Running benchmark and plotting... on DEVICE:", DEVICE, "at", timestamp)
     # grid_sizes = [1000, 3000, 5000, 10000, 15000, 20000, 25000, 30000]
-    grid_sizes = [1000, 3000, 5000, 8000, 10000, 12000]
+    grid_sizes = [18000, 24000, 30000, 35000]  # Reduced for practical benchmarking
     mlups_results, power_draws, gpu_elapsed_times = [], [], []
 
     # CPU baseline - Fix: Create CPU versions of tensors
@@ -238,7 +240,8 @@ def benchmark_and_plot():
                     ha="center",
                     fontsize=8,
                 )
-        plt.savefig(PLOT_DIR / filename)
+        # plt.savefig(PLOT_DIR / filename)
+        plt.savefig(PLOT_DIR / f"{timestamp}_{filename}")
         plt.close()
 
     plot_graph(
