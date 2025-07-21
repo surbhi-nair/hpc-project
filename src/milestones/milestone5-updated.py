@@ -12,11 +12,6 @@ torch.set_float32_matmul_precision('high')  # Enable TF32 for better performance
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
-# Advanced torch.compile optimizations
-torch._dynamo.config.cache_size_limit = 128  # Increase compilation cache
-torch._dynamo.config.optimize_ddp = False  # Disable if not using DDP
-torch._dynamo.config.suppress_errors = True  # Suppress compilation errors
-torch._inductor.config.triton.cudagraphs = False  # Disable CUDA graphs to avoid mutation issues
 
 # Set device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,40 +78,35 @@ def initialize():
     return f  # Returns [9,NX,NY]
 
 
-@torch.compile(mode="reduce-overhead")
 def stream(f):
-    """Compiled single-kernel vectorized streaming"""
+    """Vectorized streaming without compilation"""
     return torch.stack(
         [torch.roll(f[i], shifts=tuple(SHIFTS[i]), dims=(0, 1)) for i in range(9)]
     )
 
 
-@torch.compile(mode="reduce-overhead", disable=False)
 def collide_and_boundary_inlined(f):
-    """Manually inlined collision + boundary for maximum performance and no graph breaks"""
-    # Create a copy to avoid mutation issues
-    f_new = f.clone()
-    
-    # 1. Compute macroscopic
-    rho = f_new.sum(dim=0)  # [NX,NY]
-    u = torch.einsum("dc,dxy->xyc", E, f_new) / rho.unsqueeze(-1)
+    """Fully inlined collision + boundary without compilation"""
+    # 1. Compute macroscopic quantities
+    rho = f.sum(dim=0)  # [NX,NY]
+    u = torch.einsum("dc,dxy->xyc", E, f) / rho.unsqueeze(-1)
 
     # 2. Apply boundary conditions
     u[:, -1, 0] = LID_VELOCITY  # Moving lid
     u[:, -1, 1] = 0
 
-    # 3. Bounce-back walls
-    f_new[[2, 5, 6], :, 0] = f_new[[4, 7, 8], :, 0]  # Bottom
-    f_new[[1, 5, 8], 0, :] = f_new[[3, 6, 7], 0, :]  # Left
-    f_new[[3, 6, 7], -1, :] = f_new[[1, 5, 8], -1, :]  # Right
+    # 3. Bounce-back walls (in-place for efficiency)
+    f[[2, 5, 6], :, 0] = f[[4, 7, 8], :, 0]  # Bottom
+    f[[1, 5, 8], 0, :] = f[[3, 6, 7], 0, :]  # Left
+    f[[3, 6, 7], -1, :] = f[[1, 5, 8], -1, :]  # Right
 
-    # 4. Collision - equilibrium manually inlined to avoid function calls
+    # 4. Collision - equilibrium manually inlined
     cu = torch.einsum("dc,xyc->dxy", E, u)  # [9,NX,NY]
     usqr = (u**2).sum(-1)  # [NX,NY]
     feq = rho * W_opt * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * usqr)  # [9,NX,NY]
     
-    # Return new tensor instead of in-place modification
-    return f_new - (1 / TAU) * (f_new - feq)
+    # In-place collision update
+    f -= (1 / TAU) * (f - feq)
 
 
 # ==============================================
@@ -134,23 +124,15 @@ def run_simulation():
     
     f = initialize()
     
-    # Warmup compilation (first few steps to compile the kernels)
-    print("Warming up kernel compilation...")
-    warmup_start = time.time()
-    for i in range(20):  # Increased warmup for better compilation
-        f = stream(f)
-        collide_and_boundary_inlined(f)
-        if i == 9:
-            print("  Initial compilation complete...")
-    warmup_time = time.time() - warmup_start
-    print(f"Kernel compilation and warmup took: {warmup_time:.2f}s")
+    # No compilation warmup needed for pure PyTorch
+    print("Running pure PyTorch inlined version...")
     
     torch.cuda.synchronize()
     start = time.time()
 
     for step in range(NSTEPS):
         f = stream(f)
-        f = collide_and_boundary_inlined(f)  # Now returns new tensor
+        collide_and_boundary_inlined(f)  # In-place modification
 
         if step % 500 == 0 and step > 0:
             torch.cuda.synchronize()
@@ -187,7 +169,6 @@ def benchmark_and_plot():
     W_cpu = W.to(cpu_device)  # Move W to CPU
     W_opt_cpu = W_cpu.reshape(9, 1, 1)  # CPU version of W_opt
 
-    @torch.compile(mode="reduce-overhead")
     def stream_cpu(f):
         return torch.stack(
             [
@@ -196,7 +177,6 @@ def benchmark_and_plot():
             ]
         )
 
-    @torch.compile(mode="reduce-overhead")
     def collide_cpu(f):
         rho = f.sum(0)
         u = torch.einsum("dc,dxy->xyc", E_cpu, f) / rho.unsqueeze(-1)  # Use E_cpu
@@ -213,8 +193,8 @@ def benchmark_and_plot():
         
         f[:] -= (1 / TAU) * (f - feq)
 
-    # CPU warmup for fair compilation comparison
-    print("Warming up CPU compilation...")
+    # No compilation warmup needed for pure PyTorch CPU version
+    print("Running CPU baseline (pure PyTorch)...")
     for _ in range(10):
         f_cpu = stream_cpu(f_cpu)
         collide_cpu(f_cpu)
@@ -232,11 +212,8 @@ def benchmark_and_plot():
         steps = 2000
         f = torch.ones((9, nx, nx), device=DEVICE) * 0.1
         
-        # Warmup to compile kernels for this grid size
-        print(f"  Warming up compilation for {nx}x{nx}...")
-        for i in range(15):  # More thorough warmup per grid size
-            f = stream(f)
-            collide_and_boundary_inlined(f)
+        # No compilation warmup needed for pure PyTorch
+        print(f"  Running {nx}x{nx} benchmark...")
             
         torch.cuda.synchronize()
         start = time.time()
