@@ -42,7 +42,7 @@ SHIFTS = torch.tensor([[int(e[0]), int(e[1])] for e in E], device=DEVICE)
 # ==============================================
 # Simulation Parameters
 # ==============================================
-NX, NY = 18000, 18000  # Grid size
+NX, NY = 10000, 10000  # Grid size
 NSTEPS = 2000
 OMEGA = 1.0
 TAU = 1 / OMEGA
@@ -140,8 +140,8 @@ def run_simulation():
 def benchmark_and_plot():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     print("Running benchmark and plotting... on DEVICE:", DEVICE, "at", timestamp)
-    # grid_sizes = [1000, 3000, 5000, 10000, 15000, 20000, 25000, 30000]
-    grid_sizes = [18000, 24000, 30000, 35000]  # Reduced for practical benchmarking
+    grid_sizes = [1000, 3000, 5000, 8000, 10000, 12000]
+    # grid_sizes = [18000, 24000, 30000, 35000]  # Reduced for practical benchmarking
     mlups_results, power_draws, gpu_elapsed_times = [], [], []
 
     # CPU baseline - Fix: Create CPU versions of tensors
