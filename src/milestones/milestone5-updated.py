@@ -154,8 +154,8 @@ def run_simulation():
 def benchmark_and_plot():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     print("Running benchmark and plotting... on DEVICE:", DEVICE, "at", timestamp)
-    grid_sizes = [1000, 2000, 3000, 4000, 5000, 6000]  # More reasonable grid sizes for testing
-    # grid_sizes = [18000, 24000, 30000, 35000]  # Reduced for practical benchmarking
+    grid_sizes = [1000, 3000, 5000, 8000, 10000, 15000, 20000]
+    # grid_sizes = [18000, 24000, 30000, 35000]  
     mlups_results, power_draws, gpu_elapsed_times = [], [], []
 
     # CPU baseline - Fix: Create CPU versions of tensors
