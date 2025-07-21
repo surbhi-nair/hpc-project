@@ -15,6 +15,8 @@ torch.backends.cudnn.benchmark = True
 # Advanced torch.compile optimizations
 torch._dynamo.config.cache_size_limit = 128  # Increase compilation cache
 torch._dynamo.config.optimize_ddp = False  # Disable if not using DDP
+torch._dynamo.config.suppress_errors = True  # Suppress compilation errors
+torch._inductor.config.triton.cudagraphs = False  # Disable CUDA graphs to avoid mutation issues
 
 # Set device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -89,27 +91,32 @@ def stream(f):
     )
 
 
-@torch.compile(mode="reduce-overhead")
+@torch.compile(mode="reduce-overhead", disable=False)
 def collide_and_boundary_inlined(f):
     """Manually inlined collision + boundary for maximum performance and no graph breaks"""
+    # Create a copy to avoid mutation issues
+    f_new = f.clone()
+    
     # 1. Compute macroscopic
-    rho = f.sum(dim=0)  # [NX,NY]
-    u = torch.einsum("dc,dxy->xyc", E, f) / rho.unsqueeze(-1)
+    rho = f_new.sum(dim=0)  # [NX,NY]
+    u = torch.einsum("dc,dxy->xyc", E, f_new) / rho.unsqueeze(-1)
 
     # 2. Apply boundary conditions
     u[:, -1, 0] = LID_VELOCITY  # Moving lid
     u[:, -1, 1] = 0
 
     # 3. Bounce-back walls
-    f[[2, 5, 6], :, 0] = f[[4, 7, 8], :, 0]  # Bottom
-    f[[1, 5, 8], 0, :] = f[[3, 6, 7], 0, :]  # Left
-    f[[3, 6, 7], -1, :] = f[[1, 5, 8], -1, :]  # Right
+    f_new[[2, 5, 6], :, 0] = f_new[[4, 7, 8], :, 0]  # Bottom
+    f_new[[1, 5, 8], 0, :] = f_new[[3, 6, 7], 0, :]  # Left
+    f_new[[3, 6, 7], -1, :] = f_new[[1, 5, 8], -1, :]  # Right
 
     # 4. Collision - equilibrium manually inlined to avoid function calls
     cu = torch.einsum("dc,xyc->dxy", E, u)  # [9,NX,NY]
     usqr = (u**2).sum(-1)  # [NX,NY]
     feq = rho * W_opt * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * usqr)  # [9,NX,NY]
-    f[:] = f - (1 / TAU) * (f - feq)
+    
+    # Return new tensor instead of in-place modification
+    return f_new - (1 / TAU) * (f_new - feq)
 
 
 # ==============================================
@@ -143,7 +150,7 @@ def run_simulation():
 
     for step in range(NSTEPS):
         f = stream(f)
-        collide_and_boundary_inlined(f)
+        f = collide_and_boundary_inlined(f)  # Now returns new tensor
 
         if step % 500 == 0 and step > 0:
             torch.cuda.synchronize()
