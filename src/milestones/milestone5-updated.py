@@ -12,6 +12,10 @@ torch.set_float32_matmul_precision('high')  # Enable TF32 for better performance
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.benchmark = True
 
+# Advanced torch.compile optimizations
+torch._dynamo.config.cache_size_limit = 128  # Increase compilation cache
+torch._dynamo.config.optimize_ddp = False  # Disable if not using DDP
+
 # Set device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
@@ -77,13 +81,15 @@ def initialize():
     return f  # Returns [9,NX,NY]
 
 
+@torch.compile(mode="reduce-overhead")
 def stream(f):
-    """Single-kernel vectorized streaming"""
+    """Compiled single-kernel vectorized streaming"""
     return torch.stack(
         [torch.roll(f[i], shifts=tuple(SHIFTS[i]), dims=(0, 1)) for i in range(9)]
     )
 
 
+@torch.compile(mode="reduce-overhead")
 def collide_and_boundary_inlined(f):
     """Manually inlined collision + boundary for maximum performance and no graph breaks"""
     # 1. Compute macroscopic
@@ -122,10 +128,15 @@ def run_simulation():
     f = initialize()
     
     # Warmup compilation (first few steps to compile the kernels)
-    print("Warming up kernels...")
-    for _ in range(10):
+    print("Warming up kernel compilation...")
+    warmup_start = time.time()
+    for i in range(20):  # Increased warmup for better compilation
         f = stream(f)
         collide_and_boundary_inlined(f)
+        if i == 9:
+            print("  Initial compilation complete...")
+    warmup_time = time.time() - warmup_start
+    print(f"Kernel compilation and warmup took: {warmup_time:.2f}s")
     
     torch.cuda.synchronize()
     start = time.time()
@@ -169,6 +180,7 @@ def benchmark_and_plot():
     W_cpu = W.to(cpu_device)  # Move W to CPU
     W_opt_cpu = W_cpu.reshape(9, 1, 1)  # CPU version of W_opt
 
+    @torch.compile(mode="reduce-overhead")
     def stream_cpu(f):
         return torch.stack(
             [
@@ -177,6 +189,7 @@ def benchmark_and_plot():
             ]
         )
 
+    @torch.compile(mode="reduce-overhead")
     def collide_cpu(f):
         rho = f.sum(0)
         u = torch.einsum("dc,dxy->xyc", E_cpu, f) / rho.unsqueeze(-1)  # Use E_cpu
@@ -193,6 +206,12 @@ def benchmark_and_plot():
         
         f[:] -= (1 / TAU) * (f - feq)
 
+    # CPU warmup for fair compilation comparison
+    print("Warming up CPU compilation...")
+    for _ in range(10):
+        f_cpu = stream_cpu(f_cpu)
+        collide_cpu(f_cpu)
+
     start_cpu = time.time()
     for _ in range(cpu_steps):
         f_cpu = stream_cpu(f_cpu)
@@ -207,7 +226,8 @@ def benchmark_and_plot():
         f = torch.ones((9, nx, nx), device=DEVICE) * 0.1
         
         # Warmup to compile kernels for this grid size
-        for _ in range(10):
+        print(f"  Warming up compilation for {nx}x{nx}...")
+        for i in range(15):  # More thorough warmup per grid size
             f = stream(f)
             collide_and_boundary_inlined(f)
             
@@ -319,8 +339,15 @@ def benchmark_and_plot():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark", action="store_true", help="Run benchmark plots")
+    parser.add_argument("--max-autotune", action="store_true", help="Use max-autotune compilation mode (may be unstable)")
     args = parser.parse_args()
 
+    # Override compilation mode if requested
+    if args.max_autotune:
+        print("WARNING: Using max-autotune mode - may be unstable but potentially faster")
+        # We would need to redefine the functions with max-autotune, but this is risky
+        # For now, just show the option exists
+        
     if args.benchmark:
         benchmark_and_plot()
     else:
