@@ -79,14 +79,14 @@ def initialize():
 
 
 def stream(f):
-    """Vectorized streaming without compilation"""
+    """Vectorized streaming"""
     return torch.stack(
         [torch.roll(f[i], shifts=tuple(SHIFTS[i]), dims=(0, 1)) for i in range(9)]
     )
 
 
-def collide_and_boundary_inlined(f):
-    """Fully inlined collision + boundary without compilation"""
+def collide_and_boundary(f):
+    """Fused collision + boundary"""
     # 1. Compute macroscopic quantities
     rho = f.sum(dim=0)  # [NX,NY]
     u = torch.einsum("dc,dxy->xyc", E, f) / rho.unsqueeze(-1)
@@ -100,7 +100,7 @@ def collide_and_boundary_inlined(f):
     f[[1, 5, 8], 0, :] = f[[3, 6, 7], 0, :]  # Left
     f[[3, 6, 7], -1, :] = f[[1, 5, 8], -1, :]  # Right
 
-    # 4. Collision - equilibrium manually inlined
+    # 4. Collision - equilibrium
     cu = torch.einsum("dc,xyc->dxy", E, u)  # [9,NX,NY]
     usqr = (u**2).sum(-1)  # [NX,NY]
     feq = rho * W_opt * (1 + 3 * cu + 4.5 * cu**2 - 1.5 * usqr)  # [9,NX,NY]
@@ -115,7 +115,7 @@ def collide_and_boundary_inlined(f):
 
 
 def run_simulation():
-    print(" Running simulation(Milestone 5 updated - optimized) with parameters :")
+    print(" Running simulation(Milestone 5 updated) with parameters :")
     print(
         f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS}, OMEGA: {OMEGA}, TAU: {TAU}, LID_VELOCITY: {LID_VELOCITY}"
     )
@@ -124,15 +124,12 @@ def run_simulation():
     
     f = initialize()
     
-    # No compilation warmup needed for pure PyTorch
-    print("Running pure PyTorch inlined version...")
-    
     torch.cuda.synchronize()
     start = time.time()
 
     for step in range(NSTEPS):
         f = stream(f)
-        collide_and_boundary_inlined(f)  # In-place modification
+        collide_and_boundary(f)  # In-place modification
 
         if step % 500 == 0 and step > 0:
             torch.cuda.synchronize()
@@ -154,7 +151,7 @@ def run_simulation():
 def benchmark_and_plot():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     print("Running benchmark and plotting... on DEVICE:", DEVICE, "at", timestamp)
-    grid_sizes = [1000, 3000, 5000, 8000, 10000, 15000, 20000]
+    grid_sizes = [20000]
     # grid_sizes = [18000, 24000, 30000, 35000]  
     mlups_results, power_draws, gpu_elapsed_times = [], [], []
 
@@ -193,7 +190,6 @@ def benchmark_and_plot():
         
         f[:] -= (1 / TAU) * (f - feq)
 
-    # No compilation warmup needed for pure PyTorch CPU version
     print("Running CPU baseline (pure PyTorch)...")
     for _ in range(10):
         f_cpu = stream_cpu(f_cpu)
@@ -212,14 +208,13 @@ def benchmark_and_plot():
         steps = 2000
         f = torch.ones((9, nx, nx), device=DEVICE) * 0.1
         
-        # No compilation warmup needed for pure PyTorch
         print(f"  Running {nx}x{nx} benchmark...")
             
         torch.cuda.synchronize()
         start = time.time()
         for _ in range(steps):
             f = stream(f)
-            collide_and_boundary_inlined(f)
+            collide_and_boundary(f)
         torch.cuda.synchronize()
         elapsed = time.time() - start
         updates = nx * nx * steps
@@ -326,12 +321,6 @@ if __name__ == "__main__":
     parser.add_argument("--max-autotune", action="store_true", help="Use max-autotune compilation mode (may be unstable)")
     args = parser.parse_args()
 
-    # Override compilation mode if requested
-    if args.max_autotune:
-        print("WARNING: Using max-autotune mode - may be unstable but potentially faster")
-        # We would need to redefine the functions with max-autotune, but this is risky
-        # For now, just show the option exists
-        
     if args.benchmark:
         benchmark_and_plot()
     else:
