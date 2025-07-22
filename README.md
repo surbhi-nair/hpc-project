@@ -67,13 +67,30 @@ using high-performance computing techniques. The code is designed to run with GP
 - Refer the file milestone4.py
 - Alternatively, refer the file sliding_lid/shear-wave-decay.py file for a scalable implementation of the shear-wave decay that includes a structured and abstract way to implement the script.
 - Different omega values can be passed to check the theoretical and numerical viscosity being calculated
+
 ### Milestone 5: Lid-driven Cavity
 - Refer the file milestone5.py for the most optimized implementation of the lid-driven cavity
 - The upper wall is set to move with a velocity of 0.1 in the x-direction, while the other walls are stationary.
 - The simulation was tested on the H100 GPU on the bwunicluster to observe the performance in terms of MLUPS i.e. Million Lattice updates per second.
 - $\text{MLUPS} = \frac{N_x \cdot N_y \cdot \text{steps}}{\text{time (s)} \cdot 10^6}$
     - where NX and NY are the grid dimensions and steps is the number of time steps simulated.
+- The code to implement the lid-driven cavity and observe the velocity profile is in the `src/milestones/milestone5.py` file.
+- The *final optimized code* is in the `src/milestones/milestone5-optimized.py` file.
+    - Command to run: `python src/milestones/milestone5-optimized.py`
+    - This code has been optimized for performance on the bwunicluster using the H100 GPU.
+    - It includes a single kernel streaming function and a fused collision and boundary function to minimize kernel launches and memory writes.
+    - It also includes a benchmark function to measure the performance of the simulation and plot the results.
 
 
-### Structured Implementation
+### Performance Benchmarks
+- The performance was tested on the bwunicluster using the H100 and A100 GPUs for various grid sizes - 
+    - 1000, 3000, 5000, 8000, 10000, 15000, 18000.
+- The benchmark plotting functions are included in the `src/sliding_lid/plot_benchm.py` file and the plots are included in the `plots/benchmarks` directory.
+- The benchmarks include both the MLUPS and BLUPS (Billion Lattice Updates per Second) for different grid sizes.
+- Optionally, there is a script `run_batchjob.sh` to run the benchmark on the bwunicluster. 
+    - Command to run on the bwunicluster: `sbatch run_batchjob.sh`
+
+
+### Additional Notes
 - Apart from the milestone-specific implementations, the `src/sliding_lid` directory contains a structured and abstract way to implement the LBM simulation. This allows for easier experimentation and modification of the code as it allows the parameters to be passed as arguments while running the code and easier modification of the script. 
+- However, for the purpose of the final code implementation, the milestone-specific implementations are used as they are more optimized and tailored for the specific use case.
