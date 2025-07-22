@@ -1,10 +1,9 @@
 # Project: Lattice Boltzmann Method for Fluid Dynamics Simulation
-Project as part of the course "High-performance computing: Distributed-memory parallelization on GPUs and accelerators" 
+Project as part of the course "High-performance computing: Distributed-memory parallelization on GPUs and accelerators" using PyTorch.
 
 ## Description
 This project implements a Lattice Boltzmann Method (LBM) for simulating fluid dynamics
-using high-performance computing techniques. The code is designed to run with GPU acceleration
-and is optimized for performance and scalability.
+using high-performance computing techniques. The code is designed to run with GPU acceleration and is optimized for performance and scalability.
 
 
 ## Milestones:
@@ -12,6 +11,7 @@ and is optimized for performance and scalability.
 - `src/`: Contains the source code for the LBM implementation.
     - `src/milestones/`: Contains milestone-specific implementations and optimizations.
     - `src/utils/`: Contains utility functions for data handling and visualization.
+    - `src/sliding_lid/`: Contains the sliding lid implementation of the LBM in a modular and structured way.
 - `plots/`: Contains the plots generated from the simulation results.
 
 
@@ -70,8 +70,8 @@ and is optimized for performance and scalability.
 ### Milestone 5: Lid-driven Cavity
 - Refer the file milestone5.py for the most optimized implementation of the lid-driven cavity
 - The upper wall is set to move with a velocity of 0.1 in the x-direction, while the other walls are stationary.
-- The simulation was tested on the H100 GPU on the bwunicluster to observe the performance in terms of BLUPS i.e. Billion Lattice updates per second.
-- $\text{BLUPS} = \frac{N_x \cdot N_y \cdot \text{steps}}{\text{time (s)} \cdot 10^9}$
+- The simulation was tested on the H100 GPU on the bwunicluster to observe the performance in terms of MLUPS i.e. Million Lattice updates per second.
+- $\text{MLUPS} = \frac{N_x \cdot N_y \cdot \text{steps}}{\text{time (s)} \cdot 10^6}$
     - where NX and NY are the grid dimensions and steps is the number of time steps simulated.
 
 
