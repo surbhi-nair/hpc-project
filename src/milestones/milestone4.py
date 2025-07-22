@@ -12,8 +12,8 @@ print("Using device:", DEVICE)
 plot_dir = Path("plots/milestones/m4")
 plot_dir.mkdir(parents=True, exist_ok=True)
 
-NX, NY = 3000, 3000 # Grid size
-NSTEPS = 10000
+NX, NY = 300, 300 # Grid size
+NSTEPS = 2000
 SAVE_EVERY = 100
 OMEGA_VALUES = [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]  # Relaxation parameters
 u0 = 0.08  # initial amplitude (|u| < 0.1)
@@ -219,23 +219,22 @@ if __name__ == "__main__":
     viscosity_measurements = []
     if(DEVICE.type == 'cuda'):
         print("Using GPU for simulation (Milestone 4 )")
-        print(f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS},  | OMEGA_VALUES: {OMEGA_VALUES}")
-        for omega in OMEGA_VALUES:
-            print(f"Running simulation for omega = {omega:.2f}")
-            amp_decay, tag = run_simulation(omega)
-            plot_amplitude_decay(amp_decay, omega)
-            viscosity_measurements.append(extract_viscosity_numerical(amp_decay))
-
-        plt.title("Amplitude Decay")
-        plt.xlabel("Time step")
-        plt.ylabel("Normalized Amplitude")
-        plt.legend()
-        plt.savefig(plot_dir / "amplitude_decay_all.png")
-        plt.close()
-
-        plot_viscosity_vs_omega(OMEGA_VALUES, viscosity_measurements)
-        print_viscosity_table(OMEGA_VALUES, viscosity_measurements)
-        best_omega, best_nu_num, best_nu_ana, best_error = find_best_omega(OMEGA_VALUES, viscosity_measurements)
     else:
         print("Using CPU for simulation")
-        raise RuntimeError("This simulation is designed to run on a GPU. Please use a CUDA-enabled device.")
+    print(f"NX: {NX}, NY: {NY}, NSTEPS: {NSTEPS},  | OMEGA_VALUES: {OMEGA_VALUES}")
+    for omega in OMEGA_VALUES:
+        print(f"Running simulation for omega = {omega:.2f}")
+        amp_decay, tag = run_simulation(omega)
+        plot_amplitude_decay(amp_decay, omega)
+        viscosity_measurements.append(extract_viscosity_numerical(amp_decay))
+
+    plt.title("Amplitude Decay")
+    plt.xlabel("Time step")
+    plt.ylabel("Normalized Amplitude")
+    plt.legend()
+    plt.savefig(plot_dir / "amplitude_decay_all.png")
+    plt.close()
+
+    plot_viscosity_vs_omega(OMEGA_VALUES, viscosity_measurements)
+    print_viscosity_table(OMEGA_VALUES, viscosity_measurements)
+    best_omega, best_nu_num, best_nu_ana, best_error = find_best_omega(OMEGA_VALUES, viscosity_measurements)

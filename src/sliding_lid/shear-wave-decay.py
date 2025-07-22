@@ -8,7 +8,7 @@ from tqdm import trange
 from constants import *
 from utils import theoretical_decay_calcs, theoretical_viscosity
 
-if PLOT_FLAG:
+if True:
     PLOT_DIR = Path("plots/shear_wave_decay/")
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -16,7 +16,7 @@ if PLOT_FLAG:
 def sin_density(
     probab_density_f,
     omega: Optional[float] = 0.5,
-    steps: Optional[int] = 2000,
+    steps: Optional[int] = 1000,
     initial_density: Optional[float] = 0.8,
 ) -> None:
     """
@@ -95,7 +95,7 @@ def sin_density(
 def sin_velocity(
     probab_density_f,
     omega: Optional[float] = 1.0,
-    steps: Optional[int] = 2000,
+    steps: Optional[int] = 1000,
 ) -> None:
     """
     Shear wave decay with initial distribution for density ρ(r,0)=1 and for
@@ -219,7 +219,7 @@ def sin_velocity(
 
 
 def swd_test_omega(
-    probab_density_f, omegas: List[float], steps: Optional[int] = 2000
+    probab_density_f, omegas: List[float], steps: Optional[int] = 1000
 ) -> None:
     """
     Plot the exponential decay of a shear wave decay with initial
@@ -306,7 +306,7 @@ def swd_test_omega(
 
     _ = ax.legend()
 
-    _ = ax.set_title("Shear wave decay for different collision frequencies")
+    _ = ax.set_title("Shear wave decay for different ω")
     _ = ax.grid()
     # Save plots
     print("Plots saved in", PLOT_DIR,"swd_sinusoidal_velocity_var_omegas.png")
@@ -325,7 +325,7 @@ def swd_test_omega(
         print(f"{omega:<10} {theoretical_visc[omega]:<25.4f} {experimental_visc[omega]:<25.4f}")
     # New plotting block with annotation labels for each omega
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 10))
-    ax.set_title("Theoretical vs Experimental Viscosity vs Omega (Ω = collision frequency)", fontsize=14)
+    ax.set_title("Theoretical vs Experimental Viscosity vs Omega ω", fontsize=14)
     ax.plot(omegas, theoretical, label="Theoretical Viscosity", linestyle="--", color='black')
     ax.scatter(omegas, experimental, label="Experimental Viscosity", color='red')
 
@@ -333,7 +333,7 @@ def swd_test_omega(
         ax.annotate(f"{omega:.2f}", (omegas[i], experimental[i]), textcoords="offset points",
                     xytext=(0, 5), ha='center', fontsize=9, color='blue')
 
-    ax.set_xlabel("Ω (Collision Frequency)", fontsize=12)
+    ax.set_xlabel("Omega ω", fontsize=12)
     ax.set_ylabel("Viscosity ν", fontsize=12)
     ax.legend()
     ax.grid(True)
@@ -389,7 +389,7 @@ if __name__ == "__main__":
         help="Space separated list of grid size (dim_0, dim_1). For "
         "example: -g 50 50",
         type=int,
-        default=(100, 100),
+        default=(600, 600),
     )
 
     parser.add_argument(
